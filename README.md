@@ -89,16 +89,46 @@ GET /information/Opay
 
 ```json
 {
-  "GDP & Growth": {
-    "NY.GDP.MKTP.CD": {
-      "current_value": 500000000000,
-      "description": "GDP (current US$)",
-      "trend": [...],
-      "comparison": {...},
-      "percentage_difference": 0.12,
-      "volatility_label": "Moderately Volatile"
-    }
+  "company": "Dangote Group",
+  "company_info": {
+    "Founded": "1981",
+    "Founder": "Aliko Dangote",
+    "Headquarters": "Lagos, Nigeria",
+    "Industry": "Conglomerate"
   },
-  ...
+  "description": "Dangote Group is one of the most diversified business conglomerates in Africa with a hard-earned reputation for excellent business practices and products' quality.",
+  "country": "Nigeria",
+  "macro_details": {
+    "GDP & Growth": {
+      "NY.GDP.MKTP.CD": {
+        "current_value": 500000000000,
+        "description": "GDP (current US$)",
+        "trend": {
+            "year": [20, 21, 22, 23, 24],
+            "value": [480000000000, 490000000000, 495000000000, 498000000000, 500000000000]
+        },
+        "comparison": {
+          "national": 500000000000,
+          "regional_average": 450000000000
+        },
+        "percentage_difference": 0.12,
+        "volatility_label": "Moderate"
+      }
+    },
+    ...
+  },
+  "articles": [
+    {
+      "id": "wieowinowir209420492jd902qrij2",
+      "title": "Dangote Cement Sees Profit Jump",
+      "link": "https://news.example.com/dangote-cement-profit",
+      "source": "The Punch",
+      "source_link": "https://thepunch.com",
+      "published": "2024-10-21",
+      "sentiment_score": 0.67
+    },
+    ...
+  ]
 }
+
 ```
