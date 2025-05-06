@@ -81,7 +81,9 @@ def get_wiki_link(company: str) -> tuple:
         Exception: If the Wikipedia page cannot be found, or if the page is not likely about a company.
     """
 
-    driver = uc.Chrome()
+    options = uc.ChromeOptions()
+    options.binary_location = "/usr/bin/google-chrome"
+    driver = uc.Chrome(options=options)
 
     try:
 
@@ -179,7 +181,10 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
             else:
                 continue
 
-    driver = uc.Chrome()
+    options = uc.ChromeOptions()
+    options.binary_location = "/usr/bin/google-chrome"
+    driver = uc.Chrome(options=options)
+    
     try:
         driver.get(url(company, False))
         time.sleep(2)
