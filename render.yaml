@@ -2,6 +2,7 @@ services:
   - type: web
     name: lite-api
     env: python
+    plan: free
     region: oregon  # or change to your preferred region
     buildCommand: |
       apt-get update && \
