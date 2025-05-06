@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 import re
 import time
 import feedparser
+import os
 
 
 def url(company: str, wiki: bool) -> str:
@@ -82,7 +83,9 @@ def get_wiki_link(company: str) -> tuple:
     """
 
     options = uc.ChromeOptions()
-    options.binary_location = "/usr/bin/google-chrome"
+    browser_path = os.environ.get("GOOGLE_CHROME_BIN", "/usr/bin/chromium")
+    options.binary_location = browser_path
+
     driver = uc.Chrome(options=options)
 
     try:
@@ -182,7 +185,9 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
                 continue
 
     options = uc.ChromeOptions()
-    options.binary_location = "/usr/bin/google-chrome"
+    browser_path = os.environ.get("GOOGLE_CHROME_BIN", "/usr/bin/chromium")
+    options.binary_location = browser_path
+    
     driver = uc.Chrome(options=options)
     
     try:
