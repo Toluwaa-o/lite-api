@@ -100,7 +100,7 @@ GET /information/Opay
   "country": "Nigeria",
   "macro_details": {
     "GDP & Growth": {
-      "NY.GDP.MKTP.CD": {
+      "GDP (current US$)": {
         "current_value": 500000000000,
         "description": "GDP (current US$)",
         "trend": {
