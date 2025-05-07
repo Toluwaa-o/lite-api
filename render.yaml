@@ -1,18 +1,10 @@
 services:
   - type: web
     name: lite-api
-    env: python
+    env: docker
     plan: free
-    region: oregon  # or change to your preferred region
-    buildCommand: |
-      apt-get update && \
-      apt-get install -y chromium && \
-      pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port 10000
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: GOOGLE_CHROME_BIN
-        value: /usr/bin/chromium
-      - key: BROWSER_EXECUTABLE_PATH
-        value: /usr/bin/chromium
-      - key: PYPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/chromium
+      - key: PORT
+        value: 10000
