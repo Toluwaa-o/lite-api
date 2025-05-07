@@ -218,7 +218,7 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
         driver.get(url(company, False))
         time.sleep(2)
 
-        elements = driver.find_elements(By.TAG_NAME, 'div')
+        elements = driver.find_elements(By.TAG_NAME, 'li')
         full_text = " ".join(set([el.text for el in elements])).lower()
         driver.quit()
 
