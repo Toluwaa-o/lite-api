@@ -164,6 +164,7 @@ def get_wiki_link(company: str) -> tuple:
 
         return company_name, company_info, new_dsc
     except Exception as e:
+        print(driver.page_source[:1000])
         print(f"Something went wrong while scrapping from wikipedia: {e}")
         raise Exception(
             f"Something went wrong while scrapping from wikipedia: {e}")
