@@ -2,8 +2,6 @@ import numpy as np
 import pandas as pd
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from app.scrapper_functions.data.data import macro_indicator_dict, indicator_descriptions
@@ -104,9 +102,10 @@ def get_wiki_link(company: str) -> tuple:
 
         driver.get(url(company, True))
         time.sleep(1)
-        results = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "b_results"))
-        )
+        try:
+            results = driver.find_element(By.ID, 'ca_main')
+        except Exception as e:
+            results = driver.find_element(By.ID, 'b_results')  
 
         uri = extract_wiki_link(results)
         driver.quit()
@@ -164,7 +163,6 @@ def get_wiki_link(company: str) -> tuple:
 
         return company_name, company_info, new_dsc
     except Exception as e:
-        print(driver.page_source[:1000])
         print(f"Something went wrong while scrapping from wikipedia: {e}")
         raise Exception(
             f"Something went wrong while scrapping from wikipedia: {e}")
