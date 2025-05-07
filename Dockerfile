@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variable for Chromium
-ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROME_BIN='/usr/bin/chromium'
 ENV PYTHONUNBUFFERED=1
 
 # Create and set app directory
