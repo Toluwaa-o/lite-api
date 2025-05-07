@@ -4,7 +4,7 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from app.scrapper_functions.data.data import macro_indicator_dict, indicator_descriptions
+from app.scrapper_functions.data.data import macro_indicator_dict, indicator_descriptions, african_demonyms
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -16,7 +16,7 @@ import os
 
 def url(company: str, wiki: bool) -> str:
     """
-    Generates a Google search URL based on the company name and context.
+    Generates a Bing search URL based on the company name and context.
 
     Args:
         company (str): The name of the company to search for.
@@ -24,7 +24,7 @@ def url(company: str, wiki: bool) -> str:
                      If False, generates a search query for finding the country the company was founded in.
 
     Returns:
-        str: A complete Google search URL for the specified query.
+        str: A complete bing search URL for the specified query.
     """
 
     if wiki:
@@ -50,13 +50,20 @@ def extract_wiki_link(res: str) -> str:
         Exception: If a Wikipedia link is not found in the search results.
     """
     links = res.find_elements(By.TAG_NAME, "a")
+    print([link.get_attribute('href') for link in links[:10]])
     href = links[0].get_attribute('href')
     if href and "wikipedia.org" in href:
         href = href.split("/url?q=")[-1].split("&")[0]
 
         return href
     else:
-        raise Exception("Cannot find a Wikipedia page for the company")
+        href = links[1].get_attribute('href')
+        if href and "wikipedia.org" in href:
+            href = href.split("/url?q=")[-1].split("&")[0]
+
+            return href
+        else:
+            raise Exception("Cannot find a Wikipedia page for the company")
 
 
 def get_wiki_link(company: str) -> tuple:
@@ -105,14 +112,15 @@ def get_wiki_link(company: str) -> tuple:
         try:
             results = driver.find_element(By.ID, 'ca_main')
         except Exception as e:
-            results = driver.find_element(By.ID, 'b_results')  
+            results = driver.find_element(By.ID, 'b_results')
 
         uri = extract_wiki_link(results)
         driver.quit()
         response = requests.get(uri)
         soup = BeautifulSoup(response.content, 'html.parser')
-        
-        company_name = soup.find('span', class_='mw-page-title-main').text.strip()
+
+        company_name = soup.find(
+            'span', class_='mw-page-title-main').text.strip()
         infobox = soup.find('table', class_='infobox')
 
         if infobox:
@@ -171,7 +179,7 @@ def get_wiki_link(company: str) -> tuple:
 def find_country_of_origin(company: str, african_countries: list, company_info: dict) -> str:
     """
     Attempts to determine the African country of origin for a given company 
-    by performing a Google search and scanning the text content of the result page.
+    by performing a Bing search and scanning the text content of the result page.
 
     Parameters:
     -----------
@@ -219,6 +227,12 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
         elements = driver.find_elements(By.TAG_NAME, 'li')
         full_text = " ".join(set([el.text for el in elements])).lower()
         driver.quit()
+
+        for demonym in african_demonyms.values():
+            if re.search(rf"\b{re.escape(demonym.lower())}\b", full_text):
+                african_demonyms_reversed = {
+                    african_demonyms[country]: country for country in african_demonyms.keys()}
+                return african_demonyms_reversed[demonym]
 
         for country in african_countries:
             pattern = r"\b(?:in|from|based in|located in|headquartered in|a[n]?|an)?\s*" + re.escape(
