@@ -82,11 +82,15 @@ def get_wiki_link(company: str) -> tuple:
         Exception: If the Wikipedia page cannot be found, or if the page is not likely about a company.
     """
 
+    print("GOOGLE_CHROME_BIN:", os.getenv("GOOGLE_CHROME_BIN"))
     chrome_path = os.getenv("GOOGLE_CHROME_BIN")
     if not chrome_path:
         raise ValueError("GOOGLE_CHROME_BIN is not set")
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
     options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
@@ -192,6 +196,9 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
         raise ValueError("GOOGLE_CHROME_BIN is not set")
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
     options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
