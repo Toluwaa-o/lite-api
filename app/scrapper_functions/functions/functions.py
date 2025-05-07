@@ -31,10 +31,10 @@ def url(company: str, wiki: bool) -> str:
 
     if wiki:
         keyword = f"{company} company wikipedia"
-        return "https://google.com/search?q="+keyword
+        return "https://bing.com/search?q="+keyword
     else:
         keyword = f"{company} company founded in what country?"
-        return "https://google.com/search?q="+keyword
+        return "https://bing.com/search?q="+keyword
 
 
 def extract_wiki_link(res: str) -> str:
@@ -105,14 +105,15 @@ def get_wiki_link(company: str) -> tuple:
         driver.get(url(company, True))
         time.sleep(1)
         results = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "res"))
+            EC.presence_of_element_located((By.ID, "b_results"))
         )
 
         uri = extract_wiki_link(results)
         driver.quit()
         response = requests.get(uri)
         soup = BeautifulSoup(response.content, 'html.parser')
-
+        
+        company_name = soup.find('span', class_='mw-page-title-main').text.strip()
         infobox = soup.find('table', class_='infobox')
 
         if infobox:
@@ -160,7 +161,6 @@ def get_wiki_link(company: str) -> tuple:
             else:
                 company_info[info_label[i].lower()] = info_data[i].replace(
                     "\n", ", ").replace(",,", ",")
-        company_name = uri.split('/')[-1]
 
         return company_name, company_info, new_dsc
     except Exception as e:
