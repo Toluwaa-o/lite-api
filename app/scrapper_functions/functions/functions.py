@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from app.scrapper_functions.data.data import macro_indicator_dict, indicator_descriptions
@@ -91,6 +93,9 @@ def get_wiki_link(company: str) -> tuple:
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    )
     options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
@@ -99,7 +104,9 @@ def get_wiki_link(company: str) -> tuple:
 
         driver.get(url(company, True))
         time.sleep(1)
-        results = driver.find_element(By.ID, 'res')
+        results = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "res"))
+        )
 
         uri = extract_wiki_link(results)
         driver.quit()
@@ -199,10 +206,13 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    )
     options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
-    
+
     try:
         driver.get(url(company, False))
         time.sleep(2)
@@ -362,13 +372,17 @@ def get_stats(ds: pd.DataFrame, country_code: str,  region_codes: dict, indicato
             macro_stats[f"{indicator_name}"]['description'] = indicator_descriptions[indicator_name]
 
             # Extract current year value for the indicator
-            current_value = ds.loc[ds['date'] == str(year), indicator_name].values[0]
-            macro_stats[f"{indicator_name}"]["current_value"] = convert_types(current_value)
+            current_value = ds.loc[ds['date'] ==
+                                   str(year), indicator_name].values[0]
+            macro_stats[f"{indicator_name}"]["current_value"] = convert_types(
+                current_value)
 
             # Extract data for the last 'interval' years
-            interval_data = ds.loc[ds['date'].isin(years_in_interval), ['date', indicator_name]]
-            
-            macro_stats[f"{indicator_name}"]["trend"] = {"year": [], 'value': []}
+            interval_data = ds.loc[ds['date'].isin(years_in_interval), [
+                'date', indicator_name]]
+
+            macro_stats[f"{indicator_name}"]["trend"] = {
+                "year": [], 'value': []}
             for i, r in interval_data.iterrows():
                 macro_stats[f"{indicator_name}"]["trend"]['year'].append(
                     r['date'][2:])
@@ -378,7 +392,7 @@ def get_stats(ds: pd.DataFrame, country_code: str,  region_codes: dict, indicato
             try:
                 # Extract percentage change since 2020
                 previous_value = interval_data.loc[interval_data['date']
-                                                == '2020', indicator_name].values[0]
+                                                   == '2020', indicator_name].values[0]
 
                 if previous_value != 0:
                     difference = current_value - previous_value
@@ -388,7 +402,8 @@ def get_stats(ds: pd.DataFrame, country_code: str,  region_codes: dict, indicato
 
                 macro_stats[indicator_name]['percentage_difference'] = percentage_difference
             except Exception as e:
-                raise Exception(f"Something went wrong while calculating stats: {e}")
+                raise Exception(
+                    f"Something went wrong while calculating stats: {e}")
 
             try:
                 # Extract Volatility / Stability
