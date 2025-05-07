@@ -225,7 +225,8 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
         time.sleep(2)
 
         elements = driver.find_elements(By.TAG_NAME, 'li')
-        full_text = " ".join(set([el.text for el in elements])).lower()
+        full_text = " ".join(set([el.text.strip() for el in elements])).lower()
+        print(full_text)
         driver.quit()
 
         for demonym in african_demonyms.values():
