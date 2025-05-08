@@ -224,8 +224,14 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
         driver.get(url(company, False))
         time.sleep(2)
 
-        elements = driver.find_elements(By.TAG_NAME, 'li')
-        full_text = " ".join(set([el.text.strip() for el in elements])).lower()
+        elements = driver.find_elements(By.TAG_NAME, 'div')
+        texts = []
+        for el in elements:
+            try:
+                texts.append(el.text.strip())
+            except:
+                continue  # skip stale elements
+        full_text = " ".join(set(texts)).lower()
         print(full_text)
         driver.quit()
 
