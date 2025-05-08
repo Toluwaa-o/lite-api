@@ -11,7 +11,7 @@ cache = TTLCache(maxsize=100, ttl=3600*5)
 
 @app.get("/")
 async def root():
-    return {"message": "Hello, World!"}
+    return {"message": "Welcome to the FastAPI-powered backend for Stears Lite, an economic data insights platform. Docs: /docs"}
 
 
 @app.get("/information/{company}")
