@@ -41,9 +41,9 @@ def information_scrapper(company: str):
     
     information = {}
     
-    company_name, company_info, desc = get_wiki_link(company)
+    company_name, company_info, desc, driver = get_wiki_link(company)
     
-    country = find_country_of_origin(company, african_countries, company_info)
+    country = find_country_of_origin(company, african_countries, company_info, driver)
     
     if not country:
         raise Exception("Could not found country of origin for this company among list of African countries.")

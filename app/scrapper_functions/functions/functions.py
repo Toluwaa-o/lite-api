@@ -115,7 +115,7 @@ def get_wiki_link(company: str) -> tuple:
             results = driver.find_element(By.ID, 'b_results')
 
         uri = extract_wiki_link(results)
-        driver.quit()
+        # driver.quit()
         response = requests.get(uri)
         soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -169,14 +169,14 @@ def get_wiki_link(company: str) -> tuple:
                 company_info[info_label[i].lower()] = info_data[i].replace(
                     "\n", ", ").replace(",,", ",")
 
-        return company_name, company_info, new_dsc
+        return company_name, company_info, new_dsc, driver
     except Exception as e:
         print(f"Something went wrong while scrapping from wikipedia: {e}")
         raise Exception(
             f"Something went wrong while scrapping from wikipedia: {e}")
 
 
-def find_country_of_origin(company: str, african_countries: list, company_info: dict) -> str:
+def find_country_of_origin(company: str, african_countries: list, company_info: dict, driver) -> str:
     """
     Attempts to determine the African country of origin for a given company 
     by performing a Bing search and scanning the text content of the result page.
@@ -205,20 +205,20 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
             else:
                 continue
 
-    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-    if not chrome_path:
-        raise ValueError("GOOGLE_CHROME_BIN is not set")
+    # chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+    # if not chrome_path:
+    #     raise ValueError("GOOGLE_CHROME_BIN is not set")
 
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    )
-    options.binary_location = chrome_path
+    # options = uc.ChromeOptions()
+    # options.add_argument('--headless=new')
+    # options.add_argument('--no-sandbox')
+    # options.add_argument('--disable-dev-shm-usage')
+    # options.add_argument(
+    #     "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    # )
+    # options.binary_location = chrome_path
 
-    driver = uc.Chrome(options=options)
+    # driver = uc.Chrome(options=options)
 
     try:
         driver.get(url(company, False))
