@@ -36,7 +36,8 @@ This is the FastAPI-powered backend for **Stears Lite**, an economic data insigh
 |       └── functions.py   # Contains all the functions that handle the scraping and processing logic
 ├── .gitignore             # Gitignore file
 ├── requirements.text       # Contains the required libraries and specifications for the api to work
-└── README.md
+├── README.md
+└── vercel.json
 ```
 
 ---
