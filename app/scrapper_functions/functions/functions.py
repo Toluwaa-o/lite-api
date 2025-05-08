@@ -16,7 +16,7 @@ import os
 
 def url(company: str, wiki: bool) -> str:
     """
-    Generates a Bing search URL based on the company name and context.
+    Generates a Start Page search URL based on the company name and context.
 
     Args:
         company (str): The name of the company to search for.
@@ -24,15 +24,17 @@ def url(company: str, wiki: bool) -> str:
                      If False, generates a search query for finding the country the company was founded in.
 
     Returns:
-        str: A complete bing search URL for the specified query.
+        str: A complete Start Page search URL for the specified query.
     """
+    
+    base_link = 'https://www.startpage.com/sp/search?query='
 
     if wiki:
         keyword = f"{company} company wikipedia"
-        return "https://bing.com/search?q="+keyword
+        return base_link+keyword
     else:
         keyword = f"{company} company founded in what country?"
-        return "https://bing.com/search?q="+keyword
+        return base_link+keyword
 
 
 def extract_wiki_link(res: str) -> str:
@@ -109,10 +111,7 @@ def get_wiki_link(company: str) -> tuple:
 
         driver.get(url(company, True))
         time.sleep(1)
-        try:
-            results = driver.find_element(By.ID, 'ca_main')
-        except Exception as e:
-            results = driver.find_element(By.ID, 'b_results')
+        results = driver.find_element(By.CLASS_NAME, 'w-gl')
 
         uri = extract_wiki_link(results)
         # driver.quit()
@@ -164,10 +163,10 @@ def get_wiki_link(company: str) -> tuple:
                 if res:
                     company_info[info_label[i].lower()] = res.group()
                 else:
-                    company_info[info_label[i].lower()] = info_data[i]
+                    company_info[info_label[i].lower()] = re.sub(r'\[\d*\]', '', info_data[i])
             else:
-                company_info[info_label[i].lower()] = info_data[i].replace(
-                    "\n", ", ").replace(",,", ",")
+                company_info[info_label[i].lower()] = re.sub(r'\[\d*\]', '', info_data[i].replace(
+                    "\n", ", ").replace(",,", ","))
 
         return company_name, company_info, new_dsc, driver
     except Exception as e:
@@ -179,7 +178,7 @@ def get_wiki_link(company: str) -> tuple:
 def find_country_of_origin(company: str, african_countries: list, company_info: dict, driver) -> str:
     """
     Attempts to determine the African country of origin for a given company 
-    by performing a Bing search and scanning the text content of the result page.
+    by performing a start page search and scanning the text content of the result page.
 
     Parameters:
     -----------
