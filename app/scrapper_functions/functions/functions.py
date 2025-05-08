@@ -21,7 +21,7 @@ def url(company: str, wiki: bool) -> str:
                      If False, generates a search query for finding the country the company was founded in.
 
     Returns:
-        str: A complete Start Page search URL for the specified query.
+        str: A complete DuckDuckGo Page search URL for the specified query.
     """
 
     base_link = "https://html.duckduckgo.com/html/?q="
