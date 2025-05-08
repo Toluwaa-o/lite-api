@@ -1,22 +1,19 @@
 import numpy as np
 import pandas as pd
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from app.scrapper_functions.data.data import macro_indicator_dict, indicator_descriptions, african_demonyms
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
-import time
 import feedparser
-import os
+from urllib.parse import urlparse, parse_qs, unquote
+from collections import Counter
 
 
 def url(company: str, wiki: bool) -> str:
     """
-    Generates a Start Page search URL based on the company name and context.
+    Generates a duckduckgo search URL based on the company name and context.
 
     Args:
         company (str): The name of the company to search for.
@@ -26,15 +23,38 @@ def url(company: str, wiki: bool) -> str:
     Returns:
         str: A complete Start Page search URL for the specified query.
     """
-    
-    base_link = 'https://www.startpage.com/sp/search?query='
 
+    base_link = "https://html.duckduckgo.com/html/?q="
     if wiki:
         keyword = f"{company} company wikipedia"
         return base_link+keyword
     else:
         keyword = f"{company} company founded in what country?"
         return base_link+keyword
+
+
+def clean_ddg_urls(url: str):
+    """
+    Extracts and returns the original destination URL from a DuckDuckGo redirect URL.
+
+    DuckDuckGo search result links are often in the format:
+    '//duckduckgo.com/l/?uddg=<encoded_url>', where the actual URL is embedded 
+    in the 'uddg' query parameter. This function decodes and extracts that original URL.
+
+    Parameters:
+
+    url (str): The DuckDuckGo redirect URL to clean.
+
+    Returns:
+
+    str:
+        The original, cleaned URL if found; otherwise, an empty string.
+    """
+    if url and 'uddg=' in url:
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+        clean_url = unquote(query_params.get('uddg', [''])[0])
+        return clean_url
 
 
 def extract_wiki_link(res: str) -> str:
@@ -51,18 +71,16 @@ def extract_wiki_link(res: str) -> str:
     Raises:
         Exception: If a Wikipedia link is not found in the search results.
     """
-    links = res.find_elements(By.TAG_NAME, "a")
-    print([link.get_attribute('href') for link in links[:10]])
-    href = links[0].get_attribute('href')
+    links = res.find_all("a", class_='result__url')
+
+    href = clean_ddg_urls(links[0].get('href'))
     if href and "wikipedia.org" in href:
         href = href.split("/url?q=")[-1].split("&")[0]
-
         return href
     else:
-        href = links[1].get_attribute('href')
+        href = clean_ddg_urls(links[1].get('href'))
         if href and "wikipedia.org" in href:
             href = href.split("/url?q=")[-1].split("&")[0]
-
             return href
         else:
             raise Exception("Cannot find a Wikipedia page for the company")
@@ -91,35 +109,23 @@ def get_wiki_link(company: str) -> tuple:
         Exception: If the Wikipedia page cannot be found, or if the page is not likely about a company.
     """
 
-    print("GOOGLE_CHROME_BIN:", os.getenv("GOOGLE_CHROME_BIN"))
-    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-    if not chrome_path:
-        raise ValueError("GOOGLE_CHROME_BIN is not set")
-
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    )
-    options.binary_location = chrome_path
-
-    driver = uc.Chrome(options=options)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
 
     try:
 
-        driver.get(url(company, True))
-        time.sleep(1)
-        results = driver.find_element(By.CLASS_NAME, 'w-gl')
+        page = requests.get(url(company, True), headers=headers)
+        soup = BeautifulSoup(page.text, 'html.parser')
+        result = soup.find('div', class_='results')
 
-        uri = extract_wiki_link(results)
-        # driver.quit()
+        uri = extract_wiki_link(result)
         response = requests.get(uri)
         soup = BeautifulSoup(response.content, 'html.parser')
 
         company_name = soup.find(
             'span', class_='mw-page-title-main').text.strip()
+
         infobox = soup.find('table', class_='infobox')
 
         if infobox:
@@ -163,37 +169,75 @@ def get_wiki_link(company: str) -> tuple:
                 if res:
                     company_info[info_label[i].lower()] = res.group()
                 else:
-                    company_info[info_label[i].lower()] = re.sub(r'\[\d*\]', '', info_data[i])
+                    company_info[info_label[i].lower()] = re.sub(
+                        r'\[\d*\]', '', info_data[i])
             else:
                 company_info[info_label[i].lower()] = re.sub(r'\[\d*\]', '', info_data[i].replace(
                     "\n", ", ").replace(",,", ","))
 
-        return company_name, company_info, new_dsc, driver
+        return company_name, company_info, new_dsc
     except Exception as e:
         print(f"Something went wrong while scrapping from wikipedia: {e}")
         raise Exception(
             f"Something went wrong while scrapping from wikipedia: {e}")
 
 
-def find_country_of_origin(company: str, african_countries: list, company_info: dict, driver) -> str:
+def extract_most_mentioned_country(full_text: str, african_countries: list) -> str:
+    """
+    Scans the given text for mentions of African countries and returns the country 
+    that is mentioned most frequently.
+
+    Args:
+
+    full_text (str): The raw text to search within.
+    african_countries (list): A list of African country names to check for.
+
+    Returns:
+        str:
+            The name of the African country with the highest number of mentions in the text.
+            If no country is found, returns an empty string.
+    """
+    full_text = full_text.lower()
+    country_counts = Counter()
+
+    for country in african_countries:
+        pattern = rf"\b{re.escape(country.lower())}\b"
+        matches = re.findall(pattern, full_text)
+        if matches:
+            country_counts[country] += len(matches)
+
+    if country_counts:
+        most_common = country_counts.most_common(1)[0][0]
+        return most_common
+
+    return ''
+
+
+def find_country_of_origin(company: str, african_countries: list, company_info: dict, african_demonyms: dict) -> str:
     """
     Attempts to determine the African country of origin for a given company 
-    by performing a start page search and scanning the text content of the result page.
+    by performing a duckduckgo search and scanning the text content of the result page.
 
-    Parameters:
-    -----------
+    Args:
+
     company (str): The name of the company to search for.
 
     african_countries (list): A list of African country names to match against the page content.
 
     company_info (dict): A dictionary containing structured information from the infobox.
 
+    african_demonyms (dict): A dictionary containing African countries as keys and their demonyms as values.
+
     Returns:
-    --------
+
     country : str
         The name of the country found in the page content, or an empty string if none matched.
     """
+
     country_markers = ['headquarters', 'country']
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
 
     for marker in country_markers:
         if marker in company_info.keys():
@@ -204,35 +248,17 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
             else:
                 continue
 
-    # chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-    # if not chrome_path:
-    #     raise ValueError("GOOGLE_CHROME_BIN is not set")
-
-    # options = uc.ChromeOptions()
-    # options.add_argument('--headless=new')
-    # options.add_argument('--no-sandbox')
-    # options.add_argument('--disable-dev-shm-usage')
-    # options.add_argument(
-    #     "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    # )
-    # options.binary_location = chrome_path
-
-    # driver = uc.Chrome(options=options)
-
     try:
-        driver.get(url(company, False))
-        time.sleep(2)
+        page = requests.get(url(company, False), headers=headers)
+        soup = BeautifulSoup(page.text, 'html.parser')
 
-        elements = driver.find_elements(By.TAG_NAME, 'div')
-        texts = []
-        for el in elements:
-            try:
-                texts.append(el.text.strip())
-            except:
-                continue  # skip stale elements
-        full_text = " ".join(set(texts)).lower()
-        print(full_text)
-        driver.quit()
+        elements = soup.find_all('div', class_='result')
+
+        full_text = " ".join(set([el.text.strip() for el in elements])).lower()
+
+        country = extract_most_mentioned_country(full_text, african_countries)
+        if country:
+            return country
 
         for demonym in african_demonyms.values():
             if re.search(rf"\b{re.escape(demonym.lower())}\b", full_text):
@@ -252,7 +278,6 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
 
     except Exception as e:
         print(f"Error finding country of origin: {e}")
-        driver.quit()
 
     return ''
 
@@ -354,7 +379,7 @@ def convert_types(obj):
     return obj
 
 
-def get_stats(ds: pd.DataFrame, country_code: str,  region_codes: dict, indicator_codes: dict, year: int = 2024, interval: int = 4) -> dict:
+def get_stats(ds: pd.DataFrame, country_code: str,  region_codes: dict, indicator_codes: dict, macro_indicator_dict: dict, indicator_descriptions: dict, year: int = 2024, interval: int = 4) -> dict:
     """
     Extracts and organizes macroeconomic statistics for a given country, including trends
     and comparisons with regional data, from a macroeconomic dataset.
@@ -365,6 +390,9 @@ def get_stats(ds: pd.DataFrame, country_code: str,  region_codes: dict, indicato
         region_codes (dict): Mapping of country codes to their respective region codes.
         indicator_codes (dict): Dictionary mapping indicator codes to their readable names,
                                 organized by macroeconomic category (e.g., inflation, GDP).
+        macro_indicator_dict (dict): Dictionary mapping indicator categories to another dictionary. The inner dictionary
+                                contains world bank indicator codes as keys and the code meaning as value.
+        indicator_descriptions (dict): Dictionary mapping indicator name to the description
         year (int, optional): The year for which the current statistics are to be retrieved. Default is 2024.
         interval (int, optional): Number of years before the current year to include in trend analysis. Default is 5.
 

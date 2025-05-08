@@ -1,6 +1,6 @@
 # Import the required libraries
 import pandas as pd
-from app.scrapper_functions.data.data import african_countries, macro_indicator_dict, country_codes, country_region_codes
+from app.scrapper_functions.data.data import african_countries, macro_indicator_dict, country_codes, country_region_codes, indicator_descriptions, african_demonyms
 from app.scrapper_functions.functions.functions import get_wiki_link, get_stats, find_country_of_origin, get_macro_data, fetch_google_news
 
 
@@ -41,9 +41,9 @@ def information_scrapper(company: str):
     
     information = {}
     
-    company_name, company_info, desc, driver = get_wiki_link(company)
+    company_name, company_info, desc = get_wiki_link(company)
     
-    country = find_country_of_origin(company, african_countries, company_info, driver)
+    country = find_country_of_origin(company, african_countries, company_info, african_demonyms)
     
     if not country:
         raise Exception("Could not found country of origin for this company among list of African countries.")
@@ -54,7 +54,7 @@ def information_scrapper(company: str):
     
     macro_ds = macro_ds.fillna(0)
 
-    macro_details = get_stats(macro_ds, country, country_region_codes, macro_indicator_dict)
+    macro_details = get_stats(macro_ds, country, country_region_codes, macro_indicator_dict, macro_indicator_dict, indicator_descriptions)
     
     articles = fetch_google_news(company_name, limit=20)
 
