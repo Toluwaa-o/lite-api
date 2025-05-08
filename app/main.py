@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from cachetools import cached, TTLCache
 from fastapi.responses import JSONResponse
 from app.scrapper_functions.scrapper import information_scrapper
-
+import uvicorn
+import os
 
 app = FastAPI()
 
@@ -27,3 +28,22 @@ async def get_information(company: str):
     
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+    
+if __name__ == "__main__":
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=[os.path.dirname(os.path.abspath(__file__))],
+        reload_excludes=[
+            "*/.git/*",
+            "*/__pycache__/*",
+            "*.pyc",
+            "*/.pytest_cache/*",
+            "*/.vscode/*",
+            "*/.idea/*"
+        ],
+        reload_delay=1,
+        reload_includes=["*.py", "*.html", "*.css", "*.js"]
+    )
