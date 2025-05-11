@@ -1,68 +1,67 @@
 # Import the required libraries
-import pandas as pd
-from app.scrapper_functions.data.data import african_countries, macro_indicator_dict, country_codes, country_region_codes, indicator_descriptions, african_demonyms
-from app.scrapper_functions.functions.functions import get_wiki_link, get_stats, find_country_of_origin, get_macro_data, fetch_google_news
+from app.scrapper_functions.data.data import african_countries, african_demonyms
+from app.scrapper_functions.functions.functions import get_wiki_link, find_country_of_origin, fetch_google_news, get_company_stats
+import time
 
+def information_scrapper(company: str) -> dict:
+    """Scrapes and gathers detailed information about a company from multiple sources.
 
-def information_scrapper(company: str):
-    """
-    Gathers comprehensive information about a given company, including its Wikipedia data, country of origin, 
-    macroeconomic indicators, and recent news articles.
+    This function collects various types of information about a company, including:
+    - Company name and description from Wikipedia
+    - Country of origin (if the company is based in an African country)
+    - Competitors, funding details, and other company stats
+    - Recent news articles from Google News
 
-    The function performs the following steps:
-    1. Scrapes the company's Wikipedia page to extract the company name, description, and other details.
-    2. Identifies the country where the company is based and checks if it's located in Africa.
-    3. Fetches relevant macroeconomic data for the country's economy from the World Bank API.
-    4. Retrieves recent news articles related to the company from Google News RSS.
-    5. Returns a dictionary containing:
-       - Company name
-       - Description
-       - Country of origin
-       - Macroeconomic details for the country
-       - News articles related to the company
+    It processes and returns this data as a dictionary.
 
     Args:
-        company (str): The name of the company to analyze.
+        company (str): The name of the company to gather information about.
 
     Returns:
-        dict: A dictionary containing the following keys:
-            - 'company': The company's name as found on Wikipedia.
-            - 'company_info': The company's information as found on Wikioedia
-            - 'description': A brief description of the company from Wikipedia.
-            - 'country': The identified country where the company was founded.
-            - 'macro_details': Macroeconomic data categorized by the World Bank.
-            - 'articles': A list of recent news articles related to the company with sentiment scores.
+        dict: A dictionary containing the following information:
+            - "company": The name of the company.
+            - "company_info_fixed": A dictionary of fixed company information (e.g., funding, competitors).
+            - "company_info": A dictionary of general company information scraped from Wikipedia.
+            - "description": A short description of the company.
+            - "country": The country of origin (if available) for the company.
+            - "articles": A list of recent news articles about the company.
+            - "competitors": A dictionary of the company"s competitors.
+            - "funding": A dictionary of the company"s funding information.
 
     Raises:
-        Exception: 
-            - If the company does not appear to be based in Africa.
-            - If any scraping or fetching operation fails.
+        Exception: If the company cannot be found in the list of African countries, or if any scraping process fails.
+        
     """
-    
+    start = time.time()
     information = {}
-    
+
+    # Fetch company name, general information, and description from Wikipedia
     company_name, company_info, desc = get_wiki_link(company)
-    
+
+    # Find the country of origin from a list of African countries
     country = find_country_of_origin(company, african_countries, company_info, african_demonyms)
     
+    # Raise an exception if no country is found in the list of African countries
     if not country:
-        raise Exception("Could not found country of origin for this company among list of African countries.")
+        raise Exception("Could not find country of origin for this company among list of African countries.")
 
-    macro_data_dict = get_macro_data(10, country, country_codes, macro_indicator_dict, country_region_codes)
-    
-    macro_ds = pd.DataFrame(macro_data_dict).sort_values(by='date')
-    
-    macro_ds = macro_ds.fillna(0)
+    # Get company stats like competitors, funding, etc.
+    competitors, funding, company_information_dict = get_company_stats(company_name)
 
-    macro_details = get_stats(macro_ds, country, country_region_codes, macro_indicator_dict, macro_indicator_dict, indicator_descriptions)
-    
-    articles = fetch_google_news(company_name, limit=20)
+    # Fetch recent news articles related to the company
+    articles = fetch_google_news(company_name, limit=10)
 
-    information['company'] = company_name
-    information['company_information'] = company_info
-    information['description'] = desc
-    information['country'] = country
-    information['macro_details'] = macro_details
-    information['articles'] = articles
+    # Store all gathered information in a dictionary
+    information["company"] = company_name
+    information["company_info_fixed"] = company_information_dict
+    information["company_info"] = company_info
+    information["description"] = desc
+    information["country"] = country
+    information["articles"] = articles
+    information["competitors"] = competitors
+    information["funding"] = funding
+    
+    # Print the time taken for scraping
+    print(f"Time taken: {time.time() - start}")
     
     return information

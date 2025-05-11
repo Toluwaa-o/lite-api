@@ -1,15 +1,11 @@
 ## 📦 Lite Backend (FastAPI)
 
-This is the FastAPI-powered backend for **Stears Lite**, an economic data insights platform. It provides macroeconomic indicator data for African countries, including trends, volatility analysis, and comparisons to regional averages.
-
+This is the FastAPI-powered backend for **Stears Lite**, an economic data insights platform. It provides company data for African companies.
 ---
 
 ### 🚀 Features
 
-* 📈 Macroeconomic indicators grouped by category (GDP, Inflation, Trade, etc.)
-* 🔍 Trend data for the past 5 years
-* 🧮 Volatility classification (Stable, Moderately Volatile, Volatile)
-* 📊 Regional vs national comparisons
+* 📈 Company data, including income, funding, competitors, e.t.c
 * 🔁 JSON API ready for frontend consumption (Next.js)
 
 ---
@@ -18,7 +14,6 @@ This is the FastAPI-powered backend for **Stears Lite**, an economic data insigh
 
 * **Python 3.10+**
 * **FastAPI**
-* **Pandas** for data processing
 * **Uvicorn** for ASGI server
 
 ---
@@ -90,46 +85,27 @@ GET /information/Opay
 
 ```json
 {
-  "company": "Dangote Group",
-  "company_info": {
-    "Founded": "1981",
-    "Founder": "Aliko Dangote",
-    "Headquarters": "Lagos, Nigeria",
-    "Industry": "Conglomerate"
-  },
-  "description": "Dangote Group is one of the most diversified business conglomerates in Africa with a hard-earned reputation for excellent business practices and products' quality.",
-  "country": "Nigeria",
-  "macro_details": {
-    "GDP & Growth": {
-      "GDP (current US$)": {
-        "current_value": 500000000000,
-        "description": "GDP (current US$)",
-        "trend": {
-            "year": [20, 21, 22, 23, 24],
-            "value": [480000000000, 490000000000, 495000000000, 498000000000, 500000000000]
-        },
-        "comparison": {
-          "national": 500000000000,
-          "regional_average": 450000000000
-        },
-        "percentage_difference": 0.12,
-        "volatility_label": "Moderate"
-      }
-    },
-    ...
-  },
+  "company": "Tesla",
+  "company_info_fixed": {"total funding": "$10B", ...},
+  "company_info": {"industry": "Automotive", ...},
+  "description": "Tesla, Inc. is an American electric vehicle and clean energy company.",
+  "country": "USA",
   "articles": [
     {
-      "id": "wieowinowir209420492jd902qrij2",
-      "title": "Dangote Cement Sees Profit Jump",
-      "link": "https://news.example.com/dangote-cement-profit",
-      "source": "The Punch",
-      "source_link": "https://thepunch.com",
-      "published": "2024-10-21",
-      "sentiment_score": 0.67
+      "id": "article_id_1", 
+      "title": "Tesla's New Car Model Announced", 
+      "sentiment_score": 0.8, 
+      ...
     },
     ...
-  ]
+    ],
+  "competitors": {
+    "company1": {...}, 
+    "company2": {...}},
+  "funding": {
+    "round_1": {"amount": "2B", ...}, 
+    ...
+    }
 }
 
 ```

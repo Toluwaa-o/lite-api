@@ -1,5 +1,3 @@
-import numpy as np
-import pandas as pd
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import requests
@@ -11,191 +9,95 @@ from urllib.parse import urlparse, parse_qs, unquote
 from collections import Counter
 
 
-def url(company: str, wiki: bool) -> str:
-    """
-    Generates a duckduckgo search URL based on the company name and context.
+def url(company: str, search_type: str) -> str:
+    """Generates a DuckDuckGo search URL based on the company name and search type.
 
     Args:
         company (str): The name of the company to search for.
-        wiki (bool): If True, generates a search query for the company's Wikipedia page.
-                     If False, generates a search query for finding the country the company was founded in.
+        search_type (str): The type of search to perform. 
+            Accepts "wiki" for Wikipedia, "stats" for Growjo stats, or any other value for general country of origin.
 
     Returns:
-        str: A complete DuckDuckGo Page search URL for the specified query.
+        str: A full DuckDuckGo HTML search URL for the given company and search type.
     """
-
     base_link = "https://html.duckduckgo.com/html/?q="
-    if wiki:
+    if search_type == "wiki":
         keyword = f"{company} company wikipedia"
-        return base_link+keyword
+        return base_link + keyword
+    elif search_type == "stats":
+        keyword = f"{company} growjo.com company"
+        return base_link + keyword
     else:
         keyword = f"{company} company founded in what country?"
-        return base_link+keyword
+        return base_link + keyword
 
 
-def clean_ddg_urls(url: str):
-    """
-    Extracts and returns the original destination URL from a DuckDuckGo redirect URL.
 
-    DuckDuckGo search result links are often in the format:
-    '//duckduckgo.com/l/?uddg=<encoded_url>', where the actual URL is embedded 
-    in the 'uddg' query parameter. This function decodes and extracts that original URL.
+def clean_ddg_urls(url: str) -> str:
+    """Extracts and returns the clean URL from a DuckDuckGo redirect link.
 
-    Parameters:
+    DuckDuckGo search result URLs often contain a `uddg` parameter
+    which holds the actual destination URL. This function parses and 
+    decodes that value.
 
-    url (str): The DuckDuckGo redirect URL to clean.
+    Args:
+        url (str): The DuckDuckGo redirect URL.
 
     Returns:
-
-    str:
-        The original, cleaned URL if found; otherwise, an empty string.
+        str: The clean destination URL if found, otherwise an empty string.
     """
-    if url and 'uddg=' in url:
+    if url and "uddg=" in url:
         parsed_url = urlparse(url)
         query_params = parse_qs(parsed_url.query)
-        clean_url = unquote(query_params.get('uddg', [''])[0])
+        clean_url = unquote(query_params.get("uddg", [""])[0])
         return clean_url
 
 
-def extract_wiki_link(res: str) -> str:
-    """
-    Extracts the first Wikipedia link from a Selenium search results page.
+def extract_link(res, link_type: str) -> str:
+    """Extracts a specific type of link from DuckDuckGo search results.
+
+    Searches for anchor tags in the result and attempts to extract the first 
+    link that contains the specified `link_type`. It cleans the link using 
+    `clean_ddg_urls` and further processes it to remove any redirection formatting.
 
     Args:
-        res (selenium.webdriver.remote.webelement.WebElement): 
-            The Selenium WebElement representing the Google search results.
+        res: A BeautifulSoup object representing the parsed HTML of a DuckDuckGo search result.
+        link_type (str): A string indicating the expected type of link to extract 
+            (e.g., "wikipedia", "growjo").
 
     Returns:
-        str: The direct URL to the company's Wikipedia page.
+        str: A cleaned direct URL containing the specified `link_type`.
 
     Raises:
-        Exception: If a Wikipedia link is not found in the search results.
+        Exception: If no matching link containing the `link_type` is found.
     """
-    links = res.find_all("a", class_='result__url')
-
-    href = clean_ddg_urls(links[0].get('href'))
-    if href and "wikipedia.org" in href:
+    links = res.find_all("a", class_="result__url")   
+    href = clean_ddg_urls(links[0].get("href"))
+    if href and link_type in href:
         href = href.split("/url?q=")[-1].split("&")[0]
         return href
     else:
-        href = clean_ddg_urls(links[1].get('href'))
-        if href and "wikipedia.org" in href:
+        href = clean_ddg_urls(links[1].get("href"))
+        if href and link_type in href:
             href = href.split("/url?q=")[-1].split("&")[0]
             return href
         else:
-            raise Exception("Cannot find a Wikipedia page for the company")
-
-
-def get_wiki_link(company: str) -> tuple:
-    """
-    Retrieves and parses information about a company from its Wikipedia page.
-
-    This function uses a headless browser (via undetected-chromedriver) to perform a Google search 
-    for the company, locates the first Wikipedia link in the results, fetches the content of the 
-    Wikipedia page, and extracts both structured data from the infobox and descriptive text from 
-    the main content. It also verifies that the entity is likely a company by checking for keywords 
-    in the introductory paragraph.
-
-    Args:
-        company (str): The name of the company to search for.
-
-    Returns:
-        tuple:
-            - company_name (str): The Wikipedia page title of the company.
-            - company_info (dict): A dictionary containing structured information from the infobox.
-            - new_dsc (str): The cleaned first paragraph, typically a brief company description.
-
-    Raises:
-        Exception: If the Wikipedia page cannot be found, or if the page is not likely about a company.
-    """
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    }
-
-    try:
-
-        page = requests.get(url(company, True), headers=headers)
-        soup = BeautifulSoup(page.text, 'html.parser')
-        result = soup.find('div', class_='results')
-
-        uri = extract_wiki_link(result)
-        response = requests.get(uri)
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        company_name = soup.find(
-            'span', class_='mw-page-title-main').text.strip()
-
-        infobox = soup.find('table', class_='infobox')
-
-        if infobox:
-            rows = infobox.find_all('tr')
-            info_label, info_data = [], []
-            for row in rows:
-                label = row.find('th')
-                data = row.find('td')
-                if label and data:
-                    info_label.append(label.text.strip())
-                    info_data.append(data.text.strip())
-
-        large_text = soup.find('div', class_='mw-body-content')
-
-        desc = ''
-        if large_text:
-            p_tag = large_text.find('p')
-            if p_tag:
-                desc = p_tag.text.strip()
-
-        new_dsc = re.sub(r'\[\d*\]', '', desc)
-
-        company_keywords = ["company", "startup", "corporation", "firm",
-                            "organization", "business", "enterprise", "subsidiary"]
-
-        if not any(keyword in large_text.text.strip().lower() for keyword in company_keywords):
-            raise Exception('Name entered is most likely not a company.')
-
-        company_info = {}
-        units = ['hundred', 'thousand', 'million', 'billion', 'trillion']
-
-        for i in range(len(info_label)):
-            money_field = False
-
-            is_present = [st in info_data[i] for st in units]
-            money_field = any(is_present)
-
-            if money_field:
-                pattern = r'US\$\d+.?\d+ \w+'
-                res = re.search(pattern, info_data[i])
-                if res:
-                    company_info[info_label[i].lower()] = res.group()
-                else:
-                    company_info[info_label[i].lower()] = re.sub(
-                        r'\[\d*\]', '', info_data[i])
-            else:
-                company_info[info_label[i].lower()] = re.sub(r'\[\d*\]', '', info_data[i].replace(
-                    "\n", ", ").replace(",,", ","))
-
-        return company_name, company_info, new_dsc
-    except Exception as e:
-        print(f"Something went wrong while scrapping from wikipedia: {e}")
-        raise Exception(
-            f"Something went wrong while scrapping from wikipedia: {e}")
+            raise Exception(f"Cannot find a {link_type} link for the company")
 
 
 def extract_most_mentioned_country(full_text: str, african_countries: list) -> str:
-    """
-    Scans the given text for mentions of African countries and returns the country 
-    that is mentioned most frequently.
+    """Identifies the most frequently mentioned African country in a given text.
+
+    Converts the input text to lowercase and searches for exact matches of each country 
+    name from the provided list. It counts occurrences using regex word boundaries to 
+    avoid partial matches.
 
     Args:
-
-    full_text (str): The raw text to search within.
-    african_countries (list): A list of African country names to check for.
+        full_text (str): The text in which to search for country mentions.
+        african_countries (list): A list of African country names to search for.
 
     Returns:
-        str:
-            The name of the African country with the highest number of mentions in the text.
-            If no country is found, returns an empty string.
+        str: The name of the most frequently mentioned country, or an empty string if none are found.
     """
     full_text = full_text.lower()
     country_counts = Counter()
@@ -207,34 +109,31 @@ def extract_most_mentioned_country(full_text: str, african_countries: list) -> s
             country_counts[country] += len(matches)
 
     if country_counts:
+        # Return the country with the highest occurrence
         most_common = country_counts.most_common(1)[0][0]
         return most_common
 
-    return ''
+    return ""
 
 
 def find_country_of_origin(company: str, african_countries: list, company_info: dict, african_demonyms: dict) -> str:
-    """
-    Attempts to determine the African country of origin for a given company 
-    by performing a duckduckgo search and scanning the text content of the result page.
+    """Attempts to determine the African country of origin for a given company.
+
+    The function uses multiple heuristics to find a company"s country of origin:
+    1. It checks for predefined fields like "headquarters" or "country" in the company info dictionary.
+    2. If not found, it performs a DuckDuckGo search and analyzes the page content.
+    3. It looks for the most mentioned African country, demonyms, and context patterns in the text.
 
     Args:
-
-    company (str): The name of the company to search for.
-
-    african_countries (list): A list of African country names to match against the page content.
-
-    company_info (dict): A dictionary containing structured information from the infobox.
-
-    african_demonyms (dict): A dictionary containing African countries as keys and their demonyms as values.
+        company (str): The name of the company.
+        african_countries (list): A list of African country names.
+        company_info (dict): A dictionary containing extracted or known metadata about the company.
+        african_demonyms (dict): A dictionary mapping African countries to their demonyms (e.g., "Kenya": "Kenyan").
 
     Returns:
-
-    country : str
-        The name of the country found in the page content, or an empty string if none matched.
+        str: The name of the identified African country of origin, or an empty string if not found.
     """
-
-    country_markers = ['headquarters', 'country']
+    country_markers = ["headquarters", "country"]
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     }
@@ -250,16 +149,16 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
 
     try:
         page = requests.get(url(company, False), headers=headers)
-        soup = BeautifulSoup(page.text, 'html.parser')
+        soup = BeautifulSoup(page.text, "html.parser")
 
-        elements = soup.find_all('div', class_='result')
-
+        elements = soup.find_all("div", class_="result")
+        
         full_text = " ".join(set([el.text.strip() for el in elements])).lower()
 
         country = extract_most_mentioned_country(full_text, african_countries)
         if country:
             return country
-
+        
         for demonym in african_demonyms.values():
             if re.search(rf"\b{re.escape(demonym.lower())}\b", full_text):
                 african_demonyms_reversed = {
@@ -272,267 +171,345 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
             if re.search(pattern, full_text):
                 return country
 
-        for country in african_countries:
-            if re.search(rf"\b{re.escape(country.lower())}\b", full_text):
-                return country
-
     except Exception as e:
         print(f"Error finding country of origin: {e}")
 
-    return ''
+    return ""
 
 
-def get_macro_data(limit: int, c: str, c_codes: dict, mi_dict: dict, cr_codes: dict) -> dict:
-    """
-    Fetches macroeconomic data for a specific country, its region, and the world 
-    from the World Bank API.
+def extract_company_details(li_list: list) -> dict:
+    """Extracts specific company-related metrics from a list of text strings.
 
-    Args:
-        limit (int): Number of data points (years) to retrieve per indicator.
-        c (str): Country name (used as a key to retrieve codes).
-        c_codes (dict): Mapping of country names to their ISO country codes.
-        mi_dict (dict): Dictionary mapping macroeconomic categories to indicator codes and their readable names.
-        cr_codes (dict): Mapping of country names to their corresponding region codes.
-
-    Returns:
-        dict: A dictionary containing macroeconomic data for:
-            - The specified country (`nation`)
-            - The country’s region (prefixed with region code)
-            - The world (prefixed with 'world')
-            - The list of years (`date`)
-    """
-
-    country_code = c_codes[c]
-    country_region_code = cr_codes[c]
-
-    macro_data_dict = {'nation': [c for _ in range(limit)], 'date': []}
-
-    for cat in mi_dict.keys():
-        for code in mi_dict[cat].keys():
-            macro_data_dict[mi_dict[cat][code]] = []
-            indicator = code
-            url = f'https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator}?format=json'
-
-            response = requests.get(url)
-            data = response.json()
-
-            for item in data[1][:limit]:
-                macro_data_dict[mi_dict[cat][code]].append(item['value'])
-                macro_data_dict['date'].append(item['date'])
-
-        for code in mi_dict[cat].keys():
-            macro_data_dict[f'{country_region_code}_{mi_dict[cat][code]}'] = []
-            indicator = code
-            url = f'https://api.worldbank.org/v2/country/{country_region_code}/indicator/{indicator}?format=json'
-
-            response = requests.get(url)
-            data = response.json()
-
-            for item in data[1][:limit]:
-                macro_data_dict[f'{country_region_code}_{mi_dict[cat][code]}'].append(
-                    item['value'])
-                macro_data_dict['date'].append(item['date'])
-
-        for code in mi_dict[cat].keys():
-            macro_data_dict[f'world_{mi_dict[cat][code]}'] = []
-            indicator = code
-            url = f'https://api.worldbank.org/v2/country/WLD/indicator/{indicator}?format=json'
-
-            response = requests.get(url)
-            data = response.json()
-
-            for item in data[1][:limit]:
-                macro_data_dict[f'world_{mi_dict[cat][code]}'].append(
-                    item['value'])
-                macro_data_dict['date'].append(item['date'])
-
-    macro_data_dict['date'] = list(set(macro_data_dict['date']))
-
-    return macro_data_dict
-
-
-def convert_types(obj):
-    """
-    Convert NumPy data types to native Python types for JSON serialization.
-
-    This function is useful when dealing with data from pandas or NumPy that contains 
-    types like np.int64, np.float64, or np.ndarray which are not directly JSON serializable.
+    The function scans through the list to find entries that contain known
+    section headers (e.g., "annual revenue", "employees") and extracts numeric
+    or relevant textual information using a regex pattern.
 
     Args:
-        obj: The object to convert. It can be a NumPy scalar (e.g., np.int64),
-             a NumPy array, or any other type.
+        li_list (list): A list of strings, typically `<li>` elements from HTML, containing company info.
 
     Returns:
-        The equivalent Python-native type:
-            - int for NumPy integers
-            - float for NumPy floats
-            - list for NumPy arrays
-            - unchanged if the type is already JSON serializable
+        dict: A dictionary mapping each relevant section (e.g., "annual revenue") to its extracted value.
     """
-
-    if isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    return obj
-
-
-def get_stats(ds: pd.DataFrame, country_code: str,  region_codes: dict, indicator_codes: dict, macro_indicator_dict: dict, indicator_descriptions: dict, year: int = 2024, interval: int = 4) -> dict:
-    """
-    Extracts and organizes macroeconomic statistics for a given country, including trends
-    and comparisons with regional data, from a macroeconomic dataset.
-
-    Args:
-        ds (pd.DataFrame): The dataset containing macroeconomic indicators.
-        country_code (str): ISO code or identifier for the country.
-        region_codes (dict): Mapping of country codes to their respective region codes.
-        indicator_codes (dict): Dictionary mapping indicator codes to their readable names,
-                                organized by macroeconomic category (e.g., inflation, GDP).
-        macro_indicator_dict (dict): Dictionary mapping indicator categories to another dictionary. The inner dictionary
-                                contains world bank indicator codes as keys and the code meaning as value.
-        indicator_descriptions (dict): Dictionary mapping indicator name to the description
-        year (int, optional): The year for which the current statistics are to be retrieved. Default is 2024.
-        interval (int, optional): Number of years before the current year to include in trend analysis. Default is 5.
-
-    Returns:
-        dict: A dictionary organized by indicator group, where each indicator includes:
-            - current_value (value for the specified year)
-            - description (description of the indicator)
-            - trend (values from the previous interval years)
-            - comparison (national vs regional value for the same year)
-            - percentage_difference (percentage change between the most recent and 2020's value)
-            - volatility_label (categorical label such as "Stable", "Moderately volatile", or "Volatile")
-    """
-
-    all_macro_stats = {}
-
-    for group in macro_indicator_dict.keys():
-        macro_stats = {}
-        years_in_interval = [str(d) for d in range(year - interval, year + 1)]
-        for code in indicator_codes[group].keys():
-            indicator_name = indicator_codes[group][code]
-            macro_stats[f"{indicator_name}"] = {}
-
-            # Extract indicator description
-            macro_stats[f"{indicator_name}"]['description'] = indicator_descriptions[indicator_name]
-
-            # Extract current year value for the indicator
-            current_value = ds.loc[ds['date'] ==
-                                   str(year), indicator_name].values[0]
-            macro_stats[f"{indicator_name}"]["current_value"] = convert_types(
-                current_value)
-
-            # Extract data for the last 'interval' years
-            interval_data = ds.loc[ds['date'].isin(years_in_interval), [
-                'date', indicator_name]]
-
-            macro_stats[f"{indicator_name}"]["trend"] = {
-                "year": [], 'value': []}
-            for i, r in interval_data.iterrows():
-                macro_stats[f"{indicator_name}"]["trend"]['year'].append(
-                    r['date'][2:])
-                macro_stats[f"{indicator_name}"]["trend"]['value'].append(
-                    convert_types(r[indicator_name]))
-
-            try:
-                # Extract percentage change since 2020
-                previous_value = interval_data.loc[interval_data['date']
-                                                   == '2020', indicator_name].values[0]
-
-                if previous_value != 0:
-                    difference = current_value - previous_value
-                    percentage_difference = (difference / previous_value) * 100
+    company_information_dict = {}
+    sections = [
+        "annual revenue", "venture funding", "revenue per employee", 
+        "total funding", "current valuation", "employees", "employee count"
+    ]
+    for section in sections:
+        for li in li_list:
+            if section in li:
+                pattern = r"\W\d+\W?\d?+\w?\W?"
+                match = re.search(pattern, li)
+                if match:
+                    company_information_dict[section] = match.group().strip()
                 else:
-                    percentage_difference = 0
+                    company_information_dict[section] = li
 
-                macro_stats[indicator_name]['percentage_difference'] = percentage_difference
-            except Exception as e:
-                raise Exception(
-                    f"Something went wrong while calculating stats: {e}")
+    return company_information_dict
 
-            try:
-                # Extract Volatility / Stability
-                values = macro_stats[f"{indicator_name}"]["trend"]['value']
-                mean = np.mean(values)
-                std = np.std(values)
 
-                if mean == 0:
-                    volatility_label = "N/A"
+def extract_table_data(table) -> dict:
+    """Parses an HTML table and extracts its content into a structured dictionary.
+
+    The function reads the header from the `<thead>` and rows from the `<tbody>`,
+    mapping each header to a list of column values. It also removes any hashtags
+    followed by digits (e.g., "#123") from the cell values.
+
+    Args:
+        table: A BeautifulSoup Tag object representing an HTML table.
+
+    Returns:
+        dict: A dictionary where each key is a column header and the corresponding
+              value is a list of cleaned data entries from that column.
+    """
+    table_data = {}
+    head = table.find("thead")
+    ths = head.find_all("th")
+    
+    header = [th.text.strip() for th in ths] 
+    
+    for i in range(len(header)):
+        table_data[header[i]] = []
+    
+    body = table.find("tbody")
+    rows = body.find_all("tr")
+    
+    for row in rows:
+        tds = row.find_all("td")
+        data = [td.text.strip() for td in tds]
+        
+        for i in range(len(header)):
+            pattern = r"#\d+"
+            clean_data = re.sub(pattern, "", data[i])
+            table_data[header[i]].append(clean_data)
+
+    return table_data
+
+
+def extract_investor_no(company_name: str) -> int:
+    """Extracts the number of investors for a given company using a DuckDuckGo search.
+
+    The function searches for a phrase like "total X investors" in the DuckDuckGo search
+    results page for the query "[company_name] has how many investors?" It counts how often
+    each number appears in that pattern and returns the most common one.
+
+    Args:
+        company_name (str): The name of the company to search for.
+
+    Returns:
+        int: The most commonly mentioned number of investors found in the search results.
+             Returns 0 if no relevant information is found.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
+    search = f"{company_name} has how many investors?"
+    url = "https://html.duckduckgo.com/html/?q=" + search
+    page = requests.get(url, headers=headers)
+    soup = BeautifulSoup(page.text, "html.parser")
+    elements = soup.find_all("div", class_="result")
+
+    full_text = " ".join(set([el.text.strip() for el in elements])).lower()
+
+    number_counts = Counter()
+    pattern = rf"total (\d+) investors"
+    matches = set(re.findall(pattern, full_text))
+
+    for match in matches:
+        no_of_matches = re.findall(pattern, full_text)
+        if no_of_matches:
+            number_counts[match] += len(no_of_matches)
+
+    if number_counts:
+        most_common = number_counts.most_common(1)[0][0]
+        return int(most_common)
+
+    return 0
+
+
+def get_company_stats(company_name: str) -> tuple:
+    """Fetches company statistics such as competitors, funding information, and basic company details.
+
+    This function performs a DuckDuckGo search for the company"s Growjo page and scrapes it to extract:
+    - Competitors (from a specific table)
+    - Funding data (from another table)
+    - Company details such as revenue, valuation, employee count, and industry
+    - Number of investors (from search-based parsing)
+
+    Args:
+        company_name (str): The name of the company to retrieve statistics for.
+
+    Returns:
+        tuple: A tuple containing:
+            - dict: A dictionary of competitor data extracted from Growjo.
+            - dict: A dictionary of funding data extracted from Growjo.
+            - dict: A dictionary of company details including:
+                * "annual revenue"
+                * "venture funding"
+                * "revenue per employee"
+                * "total funding"
+                * "current valuation"
+                * "employees"
+                * "employee count"
+                * "investors"
+                * "industry"
+
+    Raises:
+        Exception: If the Growjo link or required data elements cannot be found.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
+    try:
+        uri = url(company_name, "stats")
+        result = requests.get(uri, headers=headers)
+        soup = BeautifulSoup(result.text, "html.parser")
+        search_results = soup.find("div", class_="results")
+        main_link = extract_link(search_results, "growjo.com")
+        result = requests.get(main_link)
+        soup = BeautifulSoup(result.text, "html.parser")
+    except Exception as e:
+        print(e)
+
+    competitors = {}
+    funding = {}
+    industry = ""
+    
+    try:
+        horizontal_info = soup.find("div", id="revenue-financials")
+        horizontal_info_a = horizontal_info.find_all("a")
+        for a in horizontal_info_a:
+            href = a.get("href")
+            if "/industry/" in href:
+                industry = a.text.strip()
+    except:
+        print("Could not find industry")
+        
+    try:
+        competitors_table = soup.find_all("table", class_="cstm-table")[1]
+        competitors = extract_table_data(competitors_table)
+    except:
+        print("no competitors table")
+    
+    try:
+        funding_table = soup.find_all("table", class_="cstm-table")[3]
+        funding = extract_table_data(funding_table)
+    except:
+        print("no funding table")
+
+    try:
+        div = soup.find("div", class_="col-md-5")
+        lis = div.find_all("li")
+        lis_list = [li.text.strip() for li in lis]
+    except:
+        print("Something went wrong while getting company information list")
+        lis_list = []
+
+    company_information_dict = extract_company_details(lis_list)
+    company_information_dict["investors"] = extract_investor_no(company_name)
+    company_information_dict["industry"] = industry
+
+    return competitors, funding, company_information_dict
+
+
+def get_wiki_link(company: str) -> tuple:
+    """Fetches the Wikipedia link and relevant company information.
+
+    This function performs a DuckDuckGo search for the company"s Wikipedia page and scrapes the following:
+    - Company name
+    - Key financial and business information (e.g., revenue, valuation)
+    - A brief company description (summary paragraph from Wikipedia)
+    
+    Args:
+        company (str): The name of the company to retrieve information for.
+
+    Returns:
+        tuple: A tuple containing:
+            - str: The name of the company.
+            - dict: A dictionary containing key company information (e.g., revenue, valuation).
+            - str: A brief description of the company.
+
+    Raises:
+        Exception: If the company is not found or if there are issues with scraping Wikipedia.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
+
+    try:
+        # Fetch the DuckDuckGo results for Wikipedia
+        page = requests.get(url(company, "wiki"), headers=headers)
+        soup = BeautifulSoup(page.text, "html.parser")
+        result = soup.find("div", class_="results")
+
+        # Extract the Wikipedia URL and fetch the page content
+        uri = extract_link(result, "en.wikipedia.org")
+        response = requests.get(uri)
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Extract the company name from the Wikipedia page
+        company_name = soup.find("span", class_="mw-page-title-main").text.strip()
+
+        # Extract information from the company infobox (if available)
+        infobox = soup.find("table", class_="infobox")
+        info_label, info_data = [], []
+
+        if infobox:
+            rows = infobox.find_all("tr")
+            for row in rows:
+                label = row.find("th")
+                data = row.find("td")
+                if label and data:
+                    info_label.append(label.text.strip())
+                    info_data.append(data.text.strip())
+
+        # Extract a brief company description
+        large_text = soup.find("div", class_="mw-body-content")
+        desc = ""
+        if large_text:
+            p_tag = large_text.find("p")
+            if p_tag:
+                desc = p_tag.text.strip()
+
+        # Clean up the description by removing reference links
+        new_dsc = re.sub(r"\[\d*\]", "", desc)
+
+        # Verify that the company name appears to be a valid company
+        company_keywords = ["company", "startup", "corporation", "firm",
+                            "organization", "business", "enterprise", "subsidiary"]
+
+        if not any(keyword in large_text.text.strip().lower() for keyword in company_keywords):
+            raise Exception("Name entered is most likely not a company.")
+
+        # Process the extracted financial and business data
+        company_info = {}
+        units = ["hundred", "thousand", "million", "billion", "trillion"]
+
+        for i in range(len(info_label)):
+            money_field = False
+            is_present = [st in info_data[i] for st in units]
+            money_field = any(is_present)
+
+            # Extract and clean money-related fields
+            if money_field:
+                pattern = r"US\$\d+.?\d+ \w+"
+                res = re.search(pattern, info_data[i])
+                if res:
+                    company_info[info_label[i].lower()] = res.group()
                 else:
-                    cv = std / mean  # Coefficient of Variation
+                    company_info[info_label[i].lower()] = re.sub(
+                        r"\[\d*\]", "", info_data[i])
+            else:
+                company_info[info_label[i].lower()] = re.sub(r"\[\d*\]", "", info_data[i].replace(
+                    "\n", ", ").replace(",,", ","))
 
-                    if cv < 0.05:
-                        volatility_label = "Stable"
-                    elif cv < 0.15:
-                        volatility_label = "Moderate"
-                    else:
-                        volatility_label = "Volatile"
-
-                macro_stats[indicator_name]['volatility_label'] = volatility_label
-            except Exception as e:
-                raise Exception(f"Something went wrong while volatility: {e}")
-
-            # Extract National vs Regional data
-            try:
-                macro_stats[f"{indicator_name}"]["comparison"] = {}
-                regional_value = ds.loc[ds['date'] == str(
-                    year), f'{region_codes[country_code]}_{indicator_name}'].values[0]
-                macro_stats[f"{indicator_name}"]["comparison"]['regional'] = convert_types(
-                    regional_value)
-                macro_stats[f"{indicator_name}"]["comparison"]['national'] = convert_types(
-                    current_value)
-            except KeyError:
-                print(f"Region data not found for {indicator_name}")
-
-        all_macro_stats[group] = macro_stats
-
-    return all_macro_stats
+        return company_name, company_info, new_dsc
+    except Exception as e:
+        print(f"Something went wrong while scrapping from wikipedia: {e}")
+        raise Exception(
+            f"Something went wrong while scrapping from wikipedia: {e}")
 
 
 def get_sentiment_category(text: str) -> tuple:
-    """
-    Analyzes the sentiment of the given text and categorizes it as positive, negative, or neutral
-    based on the compound score from VADER sentiment analysis.
+    """Analyzes the sentiment of a given text and categorizes it as positive, negative, or neutral.
+
+    This function uses the VADER SentimentIntensityAnalyzer to compute the sentiment score of the input text.
+    It returns the compound sentiment score as well as the sentiment category.
 
     Args:
-        text (str): The input text to be analyzed.
+        text (str): The input text to analyze for sentiment.
 
     Returns:
-        tuple:
-            - float: Compound sentiment score ranging from -1 (most negative) to +1 (most positive).
-            - str: Sentiment category - 'positive', 'negative', or 'neutral'.
+        tuple: A tuple containing:
+            - float: The compound sentiment score, ranging from -1 (most negative) to 1 (most positive).
+            - str: The sentiment category, which can be one of "positive", "negative", or "neutral".
     """
-
     analyzer = SentimentIntensityAnalyzer()
     score = analyzer.polarity_scores(text)
-
-    if score['compound'] > 0.05:
-        sent = 'positive'
-    elif score['compound'] < -0.05:
-        sent = 'negative'
+    
+    if score["compound"] > 0.05:
+        sent = "positive"
+    elif score["compound"] < -0.05:
+        sent = "negative"
     else:
-        sent = 'neutral'
-
-    return score['compound'], sent
+        sent = "neutral"
+        
+    return score["compound"], sent
 
 
 def remove_emojis(text: str) -> str:
-    """
-    Removes emojis and common symbolic icons from a given text string.
+    """Removes all emojis from the given text.
 
-    This function uses a regular expression to identify and remove characters 
-    in specific Unicode ranges associated with emojis, pictographs, flags, and 
-    other non-text symbols. Useful for cleaning text data for NLP or display.
+    This function uses a regular expression to identify and remove all Unicode characters
+    that match the emoji patterns, including emoticons, transport symbols, flags, and other
+    pictographs.
 
     Args:
-        text (str): The input string potentially containing emojis or icons.
+        text (str): The input string from which emojis will be removed.
 
     Returns:
-        str: The cleaned string with emojis and icons removed.
+        str: The input string with all emojis removed.
     """
-
     emoji_pattern = re.compile(
         "["
         u"\U0001F600-\U0001F64F"  # emoticons
@@ -542,33 +519,26 @@ def remove_emojis(text: str) -> str:
         u"\U00002700-\U000027BF"  # dingbats
         u"\U000024C2-\U0001F251"  # enclosed characters
         "]+", flags=re.UNICODE)
-    return emoji_pattern.sub(r'', text)
+    return emoji_pattern.sub(r"", text)
 
 
 def fetch_google_news(company_name: str, limit: int = 10) -> list:
-    """
-    Fetches recent Google News articles related to a given company and analyzes the sentiment of 
-    each article's title using VADER sentiment analysis.
+    """Fetches the latest news articles about a company from Google News.
+
+    This function fetches the latest news related to the given company from Google News,
+    processes each article"s title to analyze sentiment, and returns a list of articles
+    with relevant details.
 
     Args:
-        company_name (str): The name of the company to search for in Google News.
-        limit (int, optional): The number of news articles to fetch. Defaults to 10.
+        company_name (str): The name of the company for which to fetch news articles.
+        limit (int, optional): The maximum number of articles to return. Defaults to 10.
 
     Returns:
-        list of dict: A list of article metadata dictionaries, each containing:
-            - id (str): Unique article identifier.
-            - title (str): Cleaned title of the news article.
-            - published (str): Publication timestamp of the article.
-            - link (str): URL to the full news article.
-            - source (str): Name of the news source.
-            - source_link (str): URL to the news source.
-            - sentiment_score (float): VADER compound sentiment score of the article title.
-
-    Raises:
-        Exception: If an error occurs during fetching or parsing the RSS feed.
+        list: A list of dictionaries containing details of the fetched articles. Each dictionary
+              includes the article ID, title, publication date, link, source, source link, and
+              sentiment score.
     """
-
-    query = company_name.replace(' ', '+')
+    query = company_name.replace(" ", "+")
     articles = []
 
     try:
@@ -578,17 +548,17 @@ def fetch_google_news(company_name: str, limit: int = 10) -> list:
             feed.entries, key=lambda x: x.published_parsed, reverse=True)
 
         for entry in sorted_feed[:limit]:
-            score, _ = get_sentiment_category(entry.title.split(' - ')[0])
-            dt = datetime.strptime(entry.published, '%a, %d %b %Y %H:%M:%S %Z')
-            iso_format = dt.isoformat() + 'Z'
+            score, _ = get_sentiment_category(entry.title.split(" - ")[0])
+            dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %Z")
+            iso_format = dt.isoformat() + "Z"
             details = {
                 "id": entry.id,
-                "title": remove_emojis(entry.title.split(' - ')[0]),
+                "title": remove_emojis(entry.title.split(" - ")[0]),
                 "published": iso_format,
                 "link": entry.link,
                 "source": entry.source.title,
-                'source_link': entry.source.href,
-                'sentiment_score': score
+                "source_link": entry.source.href,
+                "sentiment_score": score
             }
             articles.append(details)
 
