@@ -280,7 +280,7 @@ def extract_investor_no(company_name: str) -> int:
     full_text = " ".join(set([el.text.strip() for el in elements])).lower()
 
     number_counts = Counter()
-    pattern = rf"total (\d+) investors"
+    pattern = rf"total ?o?f? (\d+) investors"
     matches = set(re.findall(pattern, full_text))
 
     for match in matches:
