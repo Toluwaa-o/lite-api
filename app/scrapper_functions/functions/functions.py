@@ -274,6 +274,7 @@ def extract_investor_no(company_name: str) -> int:
     url = "https://html.duckduckgo.com/html/?q=" + search
     page = requests.get(url, headers=headers)
     soup = BeautifulSoup(page.text, "html.parser")
+    print(f"Investors Page: {soup}")
     elements = soup.find_all("div", class_="result")
     print(f"Getting no. of investors: {elements}")
     full_text = " ".join(set([el.text.strip() for el in elements])).lower()
