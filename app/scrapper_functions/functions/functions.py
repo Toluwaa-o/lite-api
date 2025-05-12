@@ -48,11 +48,14 @@ def clean_ddg_urls(url: str) -> str:
     Returns:
         str: The clean destination URL if found, otherwise an empty string.
     """
-    if url and "uddg=" in url:
-        parsed_url = urlparse(url)
-        query_params = parse_qs(parsed_url.query)
-        clean_url = unquote(query_params.get("uddg", [""])[0])
-        return clean_url
+    if url:
+        if "uddg=" in url:
+            parsed_url = urlparse(url)
+            query_params = parse_qs(parsed_url.query)
+            clean_url = unquote(query_params.get("uddg", [""])[0])
+            return clean_url
+        else:
+            return url
 
 
 def extract_link(res, link_type: str) -> str:
