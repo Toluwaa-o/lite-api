@@ -73,7 +73,9 @@ def extract_link(res, link_type: str) -> str:
     Raises:
         Exception: If no matching link containing the `link_type` is found.
     """
-    links = res.find_all("a", class_="result__url")   
+    links = res.find_all("a", class_="result__url")  
+    print(f"Unclean Links: {[l.get('href') for l in links]}") 
+    print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}") 
     href = clean_ddg_urls(links[0].get("href"))
     if href and link_type in href:
         href = href.split("/url?q=")[-1].split("&")[0]
@@ -270,7 +272,7 @@ def extract_investor_no(company_name: str) -> int:
     page = requests.get(url, headers=headers)
     soup = BeautifulSoup(page.text, "html.parser")
     elements = soup.find_all("div", class_="result")
-
+    print(f"Getting no. of investors: {elements}")
     full_text = " ".join(set([el.text.strip() for el in elements])).lower()
 
     number_counts = Counter()
@@ -282,6 +284,7 @@ def extract_investor_no(company_name: str) -> int:
         if no_of_matches:
             number_counts[match] += len(no_of_matches)
 
+    print(f"Count of number matches: {number_counts}")
     if number_counts:
         most_common = number_counts.most_common(1)[0][0]
         return int(most_common)
