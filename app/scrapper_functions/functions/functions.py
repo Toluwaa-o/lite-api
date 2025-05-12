@@ -1,9 +1,11 @@
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from app.scrapper_functions.data.data import USER_AGENTS
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
+import random
 import feedparser
 from urllib.parse import urlparse, parse_qs, unquote
 from collections import Counter
@@ -135,7 +137,7 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
     """
     country_markers = ["headquarters", "country"]
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        "User-Agent": random.choice(USER_AGENTS),
     }
 
     for marker in country_markers:
@@ -261,7 +263,7 @@ def extract_investor_no(company_name: str) -> int:
              Returns 0 if no relevant information is found.
     """
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        "User-Agent": random.choice(USER_AGENTS),
     }
     search = f"{company_name} has how many investors?"
     url = "https://html.duckduckgo.com/html/?q=" + search
@@ -318,16 +320,26 @@ def get_company_stats(company_name: str) -> tuple:
         Exception: If the Growjo link or required data elements cannot be found.
     """
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        "User-Agent": random.choice(USER_AGENTS),
     }
     try:
         uri = url(company_name, "stats")
+        print(f"Initial URL {uri}")
+        
         result = requests.get(uri, headers=headers)
         soup = BeautifulSoup(result.text, "html.parser")
+        
+        print(soup)
+        
         search_results = soup.find("div", class_="results")
+        print(f"Search Results {search_results}")
+        
         main_link = extract_link(search_results, "growjo.com")
-        result = requests.get(main_link)
+        print(f"main URL {main_link}")
+        
+        result = requests.get(main_link, headers=headers)
         soup = BeautifulSoup(result.text, "html.parser")
+        print(soup)
     except Exception as e:
         print(e)
 
@@ -393,13 +405,14 @@ def get_wiki_link(company: str) -> tuple:
         Exception: If the company is not found or if there are issues with scraping Wikipedia.
     """
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        "User-Agent": random.choice(USER_AGENTS),
     }
 
     try:
         # Fetch the DuckDuckGo results for Wikipedia
         page = requests.get(url(company, "wiki"), headers=headers)
         soup = BeautifulSoup(page.text, "html.parser")
+
         result = soup.find("div", class_="results")
 
         # Extract the Wikipedia URL and fetch the page content
