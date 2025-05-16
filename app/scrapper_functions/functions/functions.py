@@ -1,7 +1,11 @@
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from app.scrapper_functions.data.data import USER_AGENTS
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 import requests
+import time
+import undetected_chromedriver as uc
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
@@ -9,6 +13,7 @@ import random
 import feedparser
 from urllib.parse import urlparse, parse_qs, unquote
 from collections import Counter
+import os
 
 
 def url(company: str, search_type: str) -> str:
@@ -23,16 +28,15 @@ def url(company: str, search_type: str) -> str:
         str: A full DuckDuckGo HTML search URL for the given company and search type.
     """
     base_link = "https://html.duckduckgo.com/html/?q="
-    if search_type == "wiki":
+    if search_type == 'wiki':
         keyword = f"{company} company wikipedia"
-        return base_link + keyword
-    elif search_type == "stats":
+        return base_link, keyword
+    elif search_type == 'stats':
         keyword = f"{company} growjo.com company"
-        return base_link + keyword
+        return base_link, keyword
     else:
         keyword = f"{company} company founded in what country?"
-        return base_link + keyword
-
+        return base_link, keyword
 
 
 def clean_ddg_urls(url: str) -> str:
@@ -76,9 +80,9 @@ def extract_link(res, link_type: str) -> str:
     Raises:
         Exception: If no matching link containing the `link_type` is found.
     """
-    links = res.find_all("a", class_="result__url")  
-    print(f"Unclean Links: {[l.get('href') for l in links]}") 
-    print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}") 
+    links = res.find_all("a", class_="result__url")
+    print(f"Unclean Links: {[l.get('href') for l in links]}")
+    print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}")
     href = clean_ddg_urls(links[0].get("href"))
     if href and link_type in href:
         href = href.split("/url?q=")[-1].split("&")[0]
@@ -141,9 +145,6 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
         str: The name of the identified African country of origin, or an empty string if not found.
     """
     country_markers = ["headquarters", "country"]
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-    }
 
     for marker in country_markers:
         if marker in company_info.keys():
@@ -154,18 +155,45 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
             else:
                 continue
 
+    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+    if not chrome_path:
+        raise ValueError("GOOGLE_CHROME_BIN is not set")
+    
+    options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    )
+    options.binary_location = chrome_path
+
+    driver = uc.Chrome(options=options)
+
     try:
-        page = requests.get(url(company, False), headers=headers)
-        soup = BeautifulSoup(page.text, "html.parser")
+        base, query = url(company, 'country')
+        driver.get(base)
+        time.sleep(2)  # Let the page load
+
+        search_input = driver.find_element(By.NAME, "q")
+        search_input.clear()
+        search_input.send_keys(query)
+        search_input.send_keys(Keys.RETURN)
+
+        time.sleep(3)  # Allow results to load
+
+        page = driver.page_source
+        driver.quit()
+        soup = BeautifulSoup(page, 'html.parser')
 
         elements = soup.find_all("div", class_="result")
-        
+
         full_text = " ".join(set([el.text.strip() for el in elements])).lower()
 
         country = extract_most_mentioned_country(full_text, african_countries)
         if country:
             return country
-        
+
         for demonym in african_demonyms.values():
             if re.search(rf"\b{re.escape(demonym.lower())}\b", full_text):
                 african_demonyms_reversed = {
@@ -199,7 +227,7 @@ def extract_company_details(li_list: list) -> dict:
     """
     company_information_dict = {}
     sections = [
-        "annual revenue", "venture funding", "revenue per employee", 
+        "annual revenue", "venture funding", "revenue per employee",
         "total funding", "current valuation", "employees", "employee count"
     ]
     for section in sections:
@@ -232,19 +260,19 @@ def extract_table_data(table) -> dict:
     table_data = {}
     head = table.find("thead")
     ths = head.find_all("th")
-    
-    header = [th.text.strip() for th in ths] 
-    
+
+    header = [th.text.strip() for th in ths]
+
     for i in range(len(header)):
         table_data[header[i]] = []
-    
+
     body = table.find("tbody")
     rows = body.find_all("tr")
-    
+
     for row in rows:
         tds = row.find_all("td")
         data = [td.text.strip() for td in tds]
-        
+
         for i in range(len(header)):
             pattern = r"#\d+"
             clean_data = re.sub(pattern, "", data[i])
@@ -267,31 +295,62 @@ def extract_investor_no(company_name: str) -> int:
         int: The most commonly mentioned number of investors found in the search results.
              Returns 0 if no relevant information is found.
     """
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-    }
-    search = f"{company_name} has how many investors?"
-    url = "https://html.duckduckgo.com/html/?q=" + search
-    page = requests.get(url, headers=headers)
-    soup = BeautifulSoup(page.text, "html.parser")
-    print(f"Investors Page: {soup}")
-    elements = soup.find_all("div", class_="result")
-    print(f"Getting no. of investors: {elements}")
-    full_text = " ".join(set([el.text.strip() for el in elements])).lower()
 
-    number_counts = Counter()
-    pattern = rf"total ?o?f? (\d+) investors"
-    matches = set(re.findall(pattern, full_text))
+    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+    if not chrome_path:
+        raise ValueError("GOOGLE_CHROME_BIN is not set")
+    
+    options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    )
+    options.binary_location = chrome_path
 
-    for match in matches:
-        no_of_matches = re.findall(pattern, full_text)
-        if no_of_matches:
-            number_counts[match] += len(no_of_matches)
+    driver = uc.Chrome(options=options)
+    
+    search = f"how many investors does {company_name} have?"
+    target_url = 'https://html.duckduckgo.com/html/'
 
-    print(f"Count of number matches: {number_counts}")
-    if number_counts:
-        most_common = number_counts.most_common(1)[0][0]
-        return int(most_common)
+    try:
+        driver.get(target_url)
+        time.sleep(2)  # Let the page load
+
+        search_input = driver.find_element(By.NAME, "q")
+        search_input.clear()
+        search_input.send_keys(search)
+        search_input.send_keys(Keys.RETURN)
+
+        time.sleep(3)  # Allow results to load
+
+        page = driver.page_source
+        soup = BeautifulSoup(page, 'html.parser')
+        elements = soup.find_all('div', class_='result')
+
+        full_text = " ".join(set([el.text.strip() for el in elements])).lower()
+        full_text = full_text.lower()
+    except Exception as e:
+        print(e)
+    finally:
+        driver.quit()
+
+    pattern = r"has\s+(\d+)\s+investors|from\s+(\d+)\s+investors|total\s+of\s+(\d+)\s+investors|raised\s+.*?\s+from\s+(\d+)\s+investors|backed\s+by\s+(\d+)\s+investors|(\d+)\s+investors\s+participated|(\d+)\s+institutional\s+investors|(\d+)\s+investors"
+
+    print(f"All funding page text: {full_text}")
+    try:
+        matches = re.findall(pattern, full_text)
+
+        # Flatten the matches: each match is a tuple; extract non-empty group
+        numbers = [int(num) for match in matches for num in match if num]
+
+        if numbers:
+            number_counts = Counter(numbers)
+            print("Investor number counts:", number_counts)
+            return number_counts.most_common(1)[0][0]
+    except Exception as e:
+        print(e)
 
     return 0
 
@@ -329,21 +388,46 @@ def get_company_stats(company_name: str) -> tuple:
     headers = {
         "User-Agent": random.choice(USER_AGENTS),
     }
+    
+    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+    if not chrome_path:
+        raise ValueError("GOOGLE_CHROME_BIN is not set")
+    
+    options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    )
+    options.binary_location = chrome_path
+
+    driver = uc.Chrome(options=options)
+    
     try:
-        uri = url(company_name, "stats")
-        print(f"Initial URL {uri}")
+        target_url, query = url(company_name, 'stats')
         
-        result = requests.get(uri, headers=headers)
-        soup = BeautifulSoup(result.text, "html.parser")
+        driver.get(target_url)
+        time.sleep(2)  # Let the page load
         
+        search_input = driver.find_element(By.NAME, "q")
+        search_input.clear()
+        search_input.send_keys(query)
+        search_input.send_keys(Keys.RETURN)
+
+        time.sleep(3)  # Allow results to load
+
+        result = driver.page_source
+        soup = BeautifulSoup(result, 'html.parser')
+
         print(soup)
-        
+
         search_results = soup.find("div", class_="results")
         print(f"Search Results {search_results}")
-        
+
         main_link = extract_link(search_results, "growjo.com")
         print(f"main URL {main_link}")
-        
+
         result = requests.get(main_link, headers=headers)
         soup = BeautifulSoup(result.text, "html.parser")
         print(soup)
@@ -353,7 +437,7 @@ def get_company_stats(company_name: str) -> tuple:
     competitors = {}
     funding = {}
     industry = ""
-    
+
     try:
         horizontal_info = soup.find("div", id="revenue-financials")
         horizontal_info_a = horizontal_info.find_all("a")
@@ -363,13 +447,13 @@ def get_company_stats(company_name: str) -> tuple:
                 industry = a.text.strip()
     except:
         print("Could not find industry")
-        
+
     try:
         competitors_table = soup.find_all("table", class_="cstm-table")[1]
         competitors = extract_table_data(competitors_table)
     except:
         print("no competitors table")
-    
+
     try:
         funding_table = soup.find_all("table", class_="cstm-table")[3]
         funding = extract_table_data(funding_table)
@@ -398,7 +482,7 @@ def get_wiki_link(company: str) -> tuple:
     - Company name
     - Key financial and business information (e.g., revenue, valuation)
     - A brief company description (summary paragraph from Wikipedia)
-    
+
     Args:
         company (str): The name of the company to retrieve information for.
 
@@ -411,15 +495,37 @@ def get_wiki_link(company: str) -> tuple:
     Raises:
         Exception: If the company is not found or if there are issues with scraping Wikipedia.
     """
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-    }
 
+    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+    if not chrome_path:
+        raise ValueError("GOOGLE_CHROME_BIN is not set")
+    
+    options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    )
+    options.binary_location = chrome_path
+
+    driver = uc.Chrome(options=options)
+    
     try:
-        # Fetch the DuckDuckGo results for Wikipedia
-        page = requests.get(url(company, "wiki"), headers=headers)
-        soup = BeautifulSoup(page.text, "html.parser")
+        base, query = url(company, 'wiki')
+        driver.get(base)
+        time.sleep(2)  # Let the page load
+        
+        search_input = driver.find_element(By.NAME, "q")
+        search_input.clear()
+        search_input.send_keys(query)
+        search_input.send_keys(Keys.RETURN)
 
+        time.sleep(3)  # Allow results to load
+        page = driver.page_source
+        soup = BeautifulSoup(page, 'html.parser')
+        
+        driver.quit()
         result = soup.find("div", class_="results")
 
         # Extract the Wikipedia URL and fetch the page content
@@ -428,7 +534,8 @@ def get_wiki_link(company: str) -> tuple:
         soup = BeautifulSoup(response.content, "html.parser")
 
         # Extract the company name from the Wikipedia page
-        company_name = soup.find("span", class_="mw-page-title-main").text.strip()
+        company_name = soup.find(
+            "span", class_="mw-page-title-main").text.strip()
 
         # Extract information from the company infobox (if available)
         infobox = soup.find("table", class_="infobox")
@@ -506,14 +613,14 @@ def get_sentiment_category(text: str) -> tuple:
     """
     analyzer = SentimentIntensityAnalyzer()
     score = analyzer.polarity_scores(text)
-    
+
     if score["compound"] > 0.05:
         sent = "positive"
     elif score["compound"] < -0.05:
         sent = "negative"
     else:
         sent = "neutral"
-        
+
     return score["compound"], sent
 
 
