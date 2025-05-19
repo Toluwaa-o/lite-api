@@ -153,10 +153,6 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
             else:
                 continue
 
-    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-    if not chrome_path:
-        raise ValueError("GOOGLE_CHROME_BIN is not set")
-    
     options = uc.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -164,7 +160,12 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
     options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     )
-    options.binary_location = chrome_path
+
+    if os.getenv("ENV") == "PRODUCTION":
+        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+        if not chrome_path:
+            raise ValueError("GOOGLE_CHROME_BIN is not set")
+        options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
 
@@ -294,10 +295,6 @@ def extract_investor_no(company_name: str) -> int:
              Returns 0 if no relevant information is found.
     """
 
-    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-    if not chrome_path:
-        raise ValueError("GOOGLE_CHROME_BIN is not set")
-    
     options = uc.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -305,10 +302,15 @@ def extract_investor_no(company_name: str) -> int:
     options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     )
-    options.binary_location = chrome_path
+
+    if os.getenv("ENV") == "PRODUCTION":
+        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+        if not chrome_path:
+            raise ValueError("GOOGLE_CHROME_BIN is not set")
+        options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
-    
+
     search = f"how many investors does {company_name} have?"
     target_url = 'https://html.duckduckgo.com/html/'
 
@@ -383,11 +385,7 @@ def get_company_stats(company_name: str) -> tuple:
     Raises:
         Exception: If the Growjo link or required data elements cannot be found.
     """
-    
-    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-    if not chrome_path:
-        raise ValueError("GOOGLE_CHROME_BIN is not set")
-    
+
     options = uc.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -395,16 +393,21 @@ def get_company_stats(company_name: str) -> tuple:
     options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     )
-    options.binary_location = chrome_path
+
+    if os.getenv("ENV") == "PRODUCTION":
+        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+        if not chrome_path:
+            raise ValueError("GOOGLE_CHROME_BIN is not set")
+        options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
-    
+
     try:
         target_url, query = url(company_name, 'stats')
-        
+
         driver.get(target_url)
         time.sleep(2)  # Let the page load
-        
+
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
@@ -491,10 +494,6 @@ def get_wiki_link(company: str) -> tuple:
         Exception: If the company is not found or if there are issues with scraping Wikipedia.
     """
 
-    chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-    if not chrome_path:
-        raise ValueError("GOOGLE_CHROME_BIN is not set")
-    
     options = uc.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -502,15 +501,20 @@ def get_wiki_link(company: str) -> tuple:
     options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     )
-    options.binary_location = chrome_path
+
+    if os.getenv("ENV") == "PRODUCTION":
+        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+        if not chrome_path:
+            raise ValueError("GOOGLE_CHROME_BIN is not set")
+        options.binary_location = chrome_path
 
     driver = uc.Chrome(options=options)
-    
+
     try:
         base, query = url(company, 'wiki')
         driver.get(base)
         time.sleep(2)
-        
+
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
@@ -519,7 +523,7 @@ def get_wiki_link(company: str) -> tuple:
         time.sleep(3)  # Allow results to load
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
-        
+
         driver.quit()
         result = soup.find("div", class_="results")
 
