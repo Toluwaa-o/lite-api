@@ -1,6 +1,6 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
-# Install system dependencies
+# Install system dependencies for Chromium
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -26,22 +26,23 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment variable for Chromium
-ENV GOOGLE_CHROME_BIN='/usr/bin/chromium'
+# Set environment variables for Chromium and Python
+ENV GOOGLE_CHROME_BIN="/usr/bin/chromium"
 ENV PYTHONUNBUFFERED=1
 
-# Create and set app directory
+# Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
+# Copy application code
 COPY . .
 
-# Expose FastAPI port
-EXPOSE 8000
+# Expose port (make sure it matches CMD below)
+EXPOSE 10000
 
-# Start the FastAPI app
+# Run FastAPI app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
