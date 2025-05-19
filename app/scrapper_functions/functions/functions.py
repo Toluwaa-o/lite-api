@@ -8,7 +8,6 @@ import undetected_chromedriver as uc
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
-import random
 import feedparser
 from urllib.parse import urlparse, parse_qs, unquote
 from collections import Counter
@@ -428,7 +427,7 @@ def get_company_stats(company_name: str) -> tuple:
         print(f"main URL {main_link}")
 
         result = requests.get(main_link, headers=headers)
-        soup = BeautifulSoup(result.text, "html.parser")
+        soup = BeautifulSoup(result.content, "html.parser")
         print(soup)
     except Exception as e:
         print(e)
@@ -513,7 +512,7 @@ def get_wiki_link(company: str) -> tuple:
     try:
         base, query = url(company, 'wiki')
         driver.get(base)
-        time.sleep(2)  # Let the page load
+        time.sleep(2)
         
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
