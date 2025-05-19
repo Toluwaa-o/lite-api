@@ -383,9 +383,6 @@ def get_company_stats(company_name: str) -> tuple:
     Raises:
         Exception: If the Growjo link or required data elements cannot be found.
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Brave/124.0.0.0",
-    }
     
     chrome_path = os.getenv("GOOGLE_CHROME_BIN")
     if not chrome_path:
@@ -426,7 +423,7 @@ def get_company_stats(company_name: str) -> tuple:
         main_link = extract_link(search_results, "growjo.com")
         print(f"main URL {main_link}")
 
-        result = requests.get(main_link, headers=headers)
+        result = requests.get(main_link)
         soup = BeautifulSoup(result.content, "html.parser")
         print(soup)
     except Exception as e:
