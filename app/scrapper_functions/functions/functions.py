@@ -1,6 +1,5 @@
 from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from app.scrapper_functions.data.data import USER_AGENTS
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 import requests
@@ -386,7 +385,7 @@ def get_company_stats(company_name: str) -> tuple:
         Exception: If the Growjo link or required data elements cannot be found.
     """
     headers = {
-        "User-Agent": random.choice(USER_AGENTS),
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Brave/124.0.0.0",
     }
     
     chrome_path = os.getenv("GOOGLE_CHROME_BIN")
