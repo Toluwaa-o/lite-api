@@ -426,9 +426,10 @@ def get_company_stats(company_name: str) -> tuple:
         main_link = extract_link(search_results, "growjo.com")
         print(f"main URL {main_link}")
 
-        result = requests.get(main_link)
-        soup = BeautifulSoup(result.content, "html.parser")
-        print(soup)
+        res = requests.get(main_link)
+        print(res.content)
+        grow_soup = BeautifulSoup(res.content, "html.parser")
+        print(grow_soup)
     except Exception as e:
         print(e)
 
@@ -437,7 +438,7 @@ def get_company_stats(company_name: str) -> tuple:
     industry = ""
 
     try:
-        horizontal_info = soup.find("div", id="revenue-financials")
+        horizontal_info = grow_soup.find("div", id="revenue-financials")
         horizontal_info_a = horizontal_info.find_all("a")
         for a in horizontal_info_a:
             href = a.get("href")
@@ -447,19 +448,19 @@ def get_company_stats(company_name: str) -> tuple:
         print("Could not find industry")
 
     try:
-        competitors_table = soup.find_all("table", class_="cstm-table")[1]
+        competitors_table = grow_soup.find_all("table", class_="cstm-table")[1]
         competitors = extract_table_data(competitors_table)
     except:
         print("no competitors table")
 
     try:
-        funding_table = soup.find_all("table", class_="cstm-table")[3]
+        funding_table = grow_soup.find_all("table", class_="cstm-table")[3]
         funding = extract_table_data(funding_table)
     except:
         print("no funding table")
 
     try:
-        div = soup.find("div", class_="col-md-5")
+        div = grow_soup.find("div", class_="col-md-5")
         lis = div.find_all("li")
         lis_list = [li.text.strip() for li in lis]
     except:
