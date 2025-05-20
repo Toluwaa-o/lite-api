@@ -2,6 +2,8 @@ from country_named_entity_recognition import find_countries
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import requests
 import time
 import undetected_chromedriver as uc
@@ -427,11 +429,15 @@ def get_company_stats(company_name: str) -> tuple:
         print(f"main URL {main_link}")
 
         driver.get(main_link)
-        time.sleep(2)
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+        except Exception as e:
+            print("Timeout waiting for page to load:", e)
 
         result = driver.page_source
         
-        driver.quit()
         grow_soup = BeautifulSoup(result, "html.parser")
         print(grow_soup)
     except Exception as e:
