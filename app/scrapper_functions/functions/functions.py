@@ -406,14 +406,14 @@ def get_company_stats(company_name: str) -> tuple:
         target_url, query = url(company_name, 'stats')
 
         driver.get(target_url)
-        time.sleep(2)  # Let the page load
+        time.sleep(2)
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)  # Allow results to load
+        time.sleep(3)
 
         result = driver.page_source
         soup = BeautifulSoup(result, 'html.parser')
@@ -426,9 +426,13 @@ def get_company_stats(company_name: str) -> tuple:
         main_link = extract_link(search_results, "growjo.com")
         print(f"main URL {main_link}")
 
-        res = requests.get(main_link)
-        print(res.content)
-        grow_soup = BeautifulSoup(res.content, "html.parser")
+        driver.get(main_link)
+        time.sleep(2)
+
+        result = driver.page_source
+        
+        driver.quit()
+        grow_soup = BeautifulSoup(result, "html.parser")
         print(grow_soup)
     except Exception as e:
         print(e)
