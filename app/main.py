@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from cachetools import cached, TTLCache
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from app.scrapper_functions.scrapper import information_scrapper
 import uvicorn
 import os
@@ -8,6 +9,18 @@ import os
 app = FastAPI()
 
 cache = TTLCache(maxsize=100, ttl=3600*5)
+
+origins = [
+    "https://stears-lite.vercel.app",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
