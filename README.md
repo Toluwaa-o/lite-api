@@ -91,15 +91,6 @@ GET /information/Opay
   "company_info": {"industry": "Automotive", ...},
   "description": "Tesla, Inc. is an American electric vehicle and clean energy company.",
   "country": "USA",
-  "articles": [
-    {
-      "id": "article_id_1", 
-      "title": "Tesla's New Car Model Announced", 
-      "sentiment_score": 0.8, 
-      ...
-    },
-    ...
-    ],
   "competitors": {
     "company1": {...}, 
     "company2": {...}},

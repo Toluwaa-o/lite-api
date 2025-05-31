@@ -81,8 +81,8 @@ def extract_link(res, link_type: str) -> str:
         Exception: If no matching link containing the `link_type` is found.
     """
     links = res.find_all("a", class_="result__url")
-    print(f"Unclean Links: {[l.get('href') for l in links]}")
-    print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}")
+    #print(f"Unclean Links: {[l.get('href') for l in links]}")
+    #print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}")
     href = clean_ddg_urls(links[0].get("href"))
     if href and link_type in href:
         href = href.split("/url?q=")[-1].split("&")[0]
@@ -128,33 +128,23 @@ def extract_most_mentioned_country(full_text: str, african_countries: list) -> s
 
 
 def find_country_of_origin(company: str, african_countries: list, company_info: dict, african_demonyms: dict) -> str:
-    """Attempts to determine the African country of origin for a given company.
-
-    The function uses multiple heuristics to find a company"s country of origin:
-    1. It checks for predefined fields like "headquarters" or "country" in the company info dictionary.
-    2. If not found, it performs a DuckDuckGo search and analyzes the page content.
-    3. It looks for the most mentioned African country, demonyms, and context patterns in the text.
-
-    Args:
-        company (str): The name of the company.
-        african_countries (list): A list of African country names.
-        company_info (dict): A dictionary containing extracted or known metadata about the company.
-        african_demonyms (dict): A dictionary mapping African countries to their demonyms (e.g., "Kenya": "Kenyan").
-
-    Returns:
-        str: The name of the identified African country of origin, or an empty string if not found.
+    """
+    Attempts to determine the African country of origin for a given company.
+    Only returns a result if it is in the list of African countries.
     """
     country_markers = ["headquarters", "country"]
 
+    # 1. Check known company_info fields
     for marker in country_markers:
-        if marker in company_info.keys():
+        if marker in company_info:
             result = find_countries(company_info[marker])
             if result:
                 country_name = result[0][0].name
-                return country_name
-            else:
-                continue
+                if country_name in african_countries:
+                    return country_name
+            continue
 
+    # 2. Perform DuckDuckGo search
     options = uc.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -174,43 +164,46 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
     try:
         base, query = url(company, 'country')
         driver.get(base)
-        time.sleep(2)  # Let the page load
+        time.sleep(2)
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)  # Allow results to load
+        time.sleep(3)
 
-        page = driver.page_source
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
         driver.quit()
-        soup = BeautifulSoup(page, 'html.parser')
 
         elements = soup.find_all("div", class_="result")
-
-        full_text = " ".join(set([el.text.strip() for el in elements])).lower()
+        full_text = " ".join(set(el.text.strip() for el in elements)).lower()
 
         country = extract_most_mentioned_country(full_text, african_countries)
-        if country:
+        if country in african_countries:
             return country
 
         for demonym in african_demonyms.values():
             if re.search(rf"\b{re.escape(demonym.lower())}\b", full_text):
-                african_demonyms_reversed = {
-                    african_demonyms[country]: country for country in african_demonyms.keys()}
-                return african_demonyms_reversed[demonym]
+                reversed_map = {v.lower(): k for k, v in african_demonyms.items()}
+                matched_country = reversed_map.get(demonym.lower())
+                if matched_country in african_countries:
+                    return matched_country
 
         for country in african_countries:
-            pattern = r"\b(?:in|from|based in|located in|headquartered in|a[n]?|an)?\s*" + re.escape(
-                country.lower()) + r"\b"
+            pattern = r"\b(?:in|from|based in|located in|headquartered in|a[n]?|an)?\s*" + re.escape(country.lower()) + r"\b"
             if re.search(pattern, full_text):
                 return country
 
     except Exception as e:
         print(f"Error finding country of origin: {e}")
+        try:
+            driver.quit()
+        except:
+            pass
 
     return ""
+
 
 
 def extract_company_details(li_list: list) -> dict:
@@ -340,7 +333,7 @@ def extract_investor_no(company_name: str) -> int:
 
     pattern = r"has\s+(\d+)\s+investors|from\s+(\d+)\s+investors|total\s+of\s+(\d+)\s+investors|raised\s+.*?\s+from\s+(\d+)\s+investors|backed\s+by\s+(\d+)\s+investors|(\d+)\s+investors\s+participated|(\d+)\s+institutional\s+investors|(\d+)\s+investors"
 
-    print(f"All funding page text: {full_text}")
+    #print(f"All funding page text: {full_text}")
     try:
         matches = re.findall(pattern, full_text)
 
@@ -349,7 +342,7 @@ def extract_investor_no(company_name: str) -> int:
 
         if numbers:
             number_counts = Counter(numbers)
-            print("Investor number counts:", number_counts)
+            #print("Investor number counts:", number_counts)
             return number_counts.most_common(1)[0][0]
     except Exception as e:
         print(e)
@@ -420,13 +413,13 @@ def get_company_stats(company_name: str) -> tuple:
         result = driver.page_source
         soup = BeautifulSoup(result, 'html.parser')
 
-        print(soup)
+        #print(soup)
 
         search_results = soup.find("div", class_="results")
-        print(f"Search Results {search_results}")
+        #print(f"Search Results {search_results}")
 
         main_link = extract_link(search_results, "growjo.com")
-        print(f"main URL {main_link}")
+        #print(f"main URL {main_link}")
 
         driver.get(main_link)
         try:
@@ -439,7 +432,7 @@ def get_company_stats(company_name: str) -> tuple:
         result = driver.page_source
         
         grow_soup = BeautifulSoup(result, "html.parser")
-        print(grow_soup)
+        #print(grow_soup)
     except Exception as e:
         print(e)
 
@@ -544,8 +537,11 @@ def get_wiki_link(company: str) -> tuple:
         soup = BeautifulSoup(response.content, "html.parser")
 
         # Extract the company name from the Wikipedia page
-        company_name = soup.find(
+        try:
+            company_name = soup.find(
             "span", class_="mw-page-title-main").text.strip()
+        except:
+            company_name = company
 
         # Extract information from the company infobox (if available)
         infobox = soup.find("table", class_="infobox")

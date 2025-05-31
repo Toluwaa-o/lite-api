@@ -109,3 +109,6 @@ ENV/
 
 # .idea
 .idea/
+
+# model (only for updating data)
+model
