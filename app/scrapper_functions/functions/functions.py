@@ -164,14 +164,14 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
     try:
         base, query = url(company, 'country')
         driver.get(base)
-        time.sleep(2)
+        time.sleep(1)
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)
+        time.sleep(1)
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         driver.quit()
@@ -311,14 +311,14 @@ def extract_investor_no(company_name: str) -> int:
 
     try:
         driver.get(target_url)
-        time.sleep(2)  # Let the page load
+        time.sleep(1)  # Let the page load
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(search)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)  # Allow results to load
+        time.sleep(1)  # Allow results to load
 
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
@@ -401,14 +401,14 @@ def get_company_stats(company_name: str) -> tuple:
         target_url, query = url(company_name, 'stats')
 
         driver.get(target_url)
-        time.sleep(2)
+        time.sleep(1)
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)
+        time.sleep(1)
 
         result = driver.page_source
         soup = BeautifulSoup(result, 'html.parser')
@@ -517,14 +517,14 @@ def get_wiki_link(company: str) -> tuple:
     try:
         base, query = url(company, 'wiki')
         driver.get(base)
-        time.sleep(2)
+        time.sleep(1)
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)  # Allow results to load
+        time.sleep(1)  # Allow results to load
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
 
