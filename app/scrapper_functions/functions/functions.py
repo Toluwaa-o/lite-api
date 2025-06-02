@@ -5,15 +5,12 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import requests
-import time
-import undetected_chromedriver as uc
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
 import feedparser
 from urllib.parse import urlparse, parse_qs, unquote
 from collections import Counter
-import os
 
 
 def url(company: str, search_type: str) -> str:
@@ -81,8 +78,8 @@ def extract_link(res, link_type: str) -> str:
         Exception: If no matching link containing the `link_type` is found.
     """
     links = res.find_all("a", class_="result__url")
-    #print(f"Unclean Links: {[l.get('href') for l in links]}")
-    #print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}")
+    # print(f"Unclean Links: {[l.get('href') for l in links]}")
+    # print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}")
     href = clean_ddg_urls(links[0].get("href"))
     if href and link_type in href:
         href = href.split("/url?q=")[-1].split("&")[0]
@@ -127,7 +124,7 @@ def extract_most_mentioned_country(full_text: str, african_countries: list) -> s
     return ""
 
 
-def find_country_of_origin(company: str, african_countries: list, company_info: dict, african_demonyms: dict) -> str:
+def find_country_of_origin(company: str, african_countries: list, company_info: dict, african_demonyms: dict, browser_pool) -> str:
     """
     Attempts to determine the African country of origin for a given company.
     Only returns a result if it is in the list of African countries.
@@ -144,37 +141,25 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
                     return country_name
             continue
 
-    # 2. Perform DuckDuckGo search
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    )
-
-    if os.getenv("ENV") == "PRODUCTION":
-        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-        if not chrome_path:
-            raise ValueError("GOOGLE_CHROME_BIN is not set")
-        options.binary_location = chrome_path
-
-    driver = uc.Chrome(options=options)
+    browser = browser_pool.get_browser()
 
     try:
         base, query = url(company, 'country')
-        driver.get(base)
-        time.sleep(1)
+        browser.get(base)
 
-        search_input = driver.find_element(By.NAME, "q")
+        wait = WebDriverWait(browser, 10)
+        search_input = wait.until(
+            EC.presence_of_element_located((By.NAME, "q")))
+
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(1)
+        # Wait for results to load
+        wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, ".result")))
 
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        driver.quit()
+        soup = BeautifulSoup(browser.page_source, 'html.parser')
 
         elements = soup.find_all("div", class_="result")
         full_text = " ".join(set(el.text.strip() for el in elements)).lower()
@@ -185,25 +170,28 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
 
         for demonym in african_demonyms.values():
             if re.search(rf"\b{re.escape(demonym.lower())}\b", full_text):
-                reversed_map = {v.lower(): k for k, v in african_demonyms.items()}
+                reversed_map = {
+                    v.lower(): k for k, v in african_demonyms.items()}
                 matched_country = reversed_map.get(demonym.lower())
                 if matched_country in african_countries:
                     return matched_country
 
         for country in african_countries:
-            pattern = r"\b(?:in|from|based in|located in|headquartered in|a[n]?|an)?\s*" + re.escape(country.lower()) + r"\b"
+            pattern = r"\b(?:in|from|based in|located in|headquartered in|a[n]?|an)?\s*" + re.escape(
+                country.lower()) + r"\b"
             if re.search(pattern, full_text):
                 return country
 
     except Exception as e:
         print(f"Error finding country of origin: {e}")
         try:
-            driver.quit()
+            browser_pool.release_browser(browser)
         except:
             pass
+    finally:
+        browser_pool.release_browser(browser)
 
     return ""
-
 
 
 def extract_company_details(li_list: list) -> dict:
@@ -275,7 +263,7 @@ def extract_table_data(table) -> dict:
     return table_data
 
 
-def extract_investor_no(company_name: str) -> int:
+def extract_investor_no(company_name: str, browser_pool) -> int:
     """Extracts the number of investors for a given company using a DuckDuckGo search.
 
     The function searches for a phrase like "total X investors" in the DuckDuckGo search
@@ -290,38 +278,27 @@ def extract_investor_no(company_name: str) -> int:
              Returns 0 if no relevant information is found.
     """
 
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    )
-
-    if os.getenv("ENV") == "PRODUCTION":
-        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-        if not chrome_path:
-            raise ValueError("GOOGLE_CHROME_BIN is not set")
-        options.binary_location = chrome_path
-
-    driver = uc.Chrome(options=options)
+    browser = browser_pool.get_browser()
 
     search = f"how many investors does {company_name} have?"
     target_url = 'https://html.duckduckgo.com/html/'
 
     try:
-        driver.get(target_url)
-        time.sleep(1)  # Let the page load
+        browser.get(target_url)
 
-        search_input = driver.find_element(By.NAME, "q")
+        wait = WebDriverWait(browser, 10)
+        search_input = wait.until(
+            EC.presence_of_element_located((By.NAME, "q")))
+
         search_input.clear()
         search_input.send_keys(search)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(1)  # Allow results to load
+        # Wait for results to load
+        wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, ".result")))
 
-        page = driver.page_source
-        soup = BeautifulSoup(page, 'html.parser')
+        soup = BeautifulSoup(browser.page_source, 'html.parser')
         elements = soup.find_all('div', class_='result')
 
         full_text = " ".join(set([el.text.strip() for el in elements])).lower()
@@ -329,11 +306,11 @@ def extract_investor_no(company_name: str) -> int:
     except Exception as e:
         print(e)
     finally:
-        driver.quit()
+        browser_pool.release_browser(browser)
 
     pattern = r"has\s+(\d+)\s+investors|from\s+(\d+)\s+investors|total\s+of\s+(\d+)\s+investors|raised\s+.*?\s+from\s+(\d+)\s+investors|backed\s+by\s+(\d+)\s+investors|(\d+)\s+investors\s+participated|(\d+)\s+institutional\s+investors|(\d+)\s+investors"
 
-    #print(f"All funding page text: {full_text}")
+    # print(f"All funding page text: {full_text}")
     try:
         matches = re.findall(pattern, full_text)
 
@@ -342,7 +319,7 @@ def extract_investor_no(company_name: str) -> int:
 
         if numbers:
             number_counts = Counter(numbers)
-            #print("Investor number counts:", number_counts)
+            # print("Investor number counts:", number_counts)
             return number_counts.most_common(1)[0][0]
     except Exception as e:
         print(e)
@@ -350,7 +327,7 @@ def extract_investor_no(company_name: str) -> int:
     return 0
 
 
-def get_company_stats(company_name: str) -> tuple:
+def get_company_stats(company_name: str, browser_pool) -> tuple:
     """Fetches company statistics such as competitors, funding information, and basic company details.
 
     This function performs a DuckDuckGo search for the company"s Growjo page and scrapes it to extract:
@@ -381,60 +358,50 @@ def get_company_stats(company_name: str) -> tuple:
         Exception: If the Growjo link or required data elements cannot be found.
     """
 
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    )
-
-    if os.getenv("ENV") == "PRODUCTION":
-        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-        if not chrome_path:
-            raise ValueError("GOOGLE_CHROME_BIN is not set")
-        options.binary_location = chrome_path
-
-    driver = uc.Chrome(options=options)
+    browser = browser_pool.get_browser()
 
     try:
         target_url, query = url(company_name, 'stats')
 
-        driver.get(target_url)
-        time.sleep(1)
+        browser.get(target_url)
+        wait = WebDriverWait(browser, 10)
+        search_input = wait.until(
+            EC.presence_of_element_located((By.NAME, "q")))
 
-        search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(1)
+        # Wait for results to load
+        wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, ".result")))
 
-        result = driver.page_source
-        soup = BeautifulSoup(result, 'html.parser')
+        soup = BeautifulSoup(browser.page_source, 'html.parser')
 
-        #print(soup)
+        # print(soup)
 
         search_results = soup.find("div", class_="results")
-        #print(f"Search Results {search_results}")
+        # print(f"Search Results {search_results}")
 
         main_link = extract_link(search_results, "growjo.com")
-        #print(f"main URL {main_link}")
+        # print(f"main URL {main_link}")
 
-        driver.get(main_link)
+        browser.get(main_link)
         try:
-            WebDriverWait(driver, 10).until(
+            WebDriverWait(browser, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
         except Exception as e:
             print("Timeout waiting for page to load:", e)
 
-        result = driver.page_source
-        
+        result = browser.page_source
+
         grow_soup = BeautifulSoup(result, "html.parser")
-        #print(grow_soup)
+        # print(grow_soup)
     except Exception as e:
         print(e)
+    finally:
+        browser_pool.release_browser(browser)
 
     competitors = {}
     funding = {}
@@ -471,13 +438,13 @@ def get_company_stats(company_name: str) -> tuple:
         lis_list = []
 
     company_information_dict = extract_company_details(lis_list)
-    company_information_dict["investors"] = extract_investor_no(company_name)
+    company_information_dict["investors"] = extract_investor_no(company_name, browser_pool)
     company_information_dict["industry"] = industry
 
     return competitors, funding, company_information_dict
 
 
-def get_wiki_link(company: str) -> tuple:
+def get_wiki_link(company: str, browser_pool) -> tuple:
     """Fetches the Wikipedia link and relevant company information.
 
     This function performs a DuckDuckGo search for the company"s Wikipedia page and scrapes the following:
@@ -498,37 +465,26 @@ def get_wiki_link(company: str) -> tuple:
         Exception: If the company is not found or if there are issues with scraping Wikipedia.
     """
 
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    )
-
-    if os.getenv("ENV") == "PRODUCTION":
-        chrome_path = os.getenv("GOOGLE_CHROME_BIN")
-        if not chrome_path:
-            raise ValueError("GOOGLE_CHROME_BIN is not set")
-        options.binary_location = chrome_path
-
-    driver = uc.Chrome(options=options)
+    browser = browser_pool.get_browser()
 
     try:
         base, query = url(company, 'wiki')
-        driver.get(base)
-        time.sleep(1)
+        browser.get(base)
+        wait = WebDriverWait(browser, 10)
+        search_input = wait.until(
+            EC.presence_of_element_located((By.NAME, "q")))
 
-        search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(1)  # Allow results to load
-        page = driver.page_source
+        # Wait for results to load
+        wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, ".result")))
+
+        page = browser.page_source
         soup = BeautifulSoup(page, 'html.parser')
 
-        driver.quit()
         result = soup.find("div", class_="results")
 
         # Extract the Wikipedia URL and fetch the page content
@@ -539,7 +495,7 @@ def get_wiki_link(company: str) -> tuple:
         # Extract the company name from the Wikipedia page
         try:
             company_name = soup.find(
-            "span", class_="mw-page-title-main").text.strip()
+                "span", class_="mw-page-title-main").text.strip()
         except:
             company_name = company
 
@@ -601,6 +557,8 @@ def get_wiki_link(company: str) -> tuple:
         print(f"Something went wrong while scrapping from wikipedia: {e}")
         raise Exception(
             f"Something went wrong while scrapping from wikipedia: {e}")
+    finally:
+        browser_pool.release_browser(browser)
 
 
 def get_sentiment_category(text: str) -> tuple:

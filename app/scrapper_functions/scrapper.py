@@ -1,68 +1,127 @@
 # Import the required libraries
 from app.scrapper_functions.data.data import african_countries, african_demonyms
-from app.scrapper_functions.functions.functions import get_wiki_link, find_country_of_origin, fetch_google_news, get_company_stats
+from app.scrapper_functions.functions.functions import get_wiki_link, find_country_of_origin, get_company_stats
 import time
+from concurrent.futures import ThreadPoolExecutor
+from selenium.webdriver import Chrome
+from queue import Queue
+import time
+import undetected_chromedriver as uc
+import os
 
 
-def information_scrapper(company: str) -> dict:
+class BrowserPool:
+    def __init__(self, size=3):
+        self.pool = Queue(maxsize=size)
+        for _ in range(size):
+            options = uc.ChromeOptions()
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument(
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+            )
+
+            if os.getenv("ENV") == "PRODUCTION":
+                chrome_path = os.getenv("GOOGLE_CHROME_BIN")
+                if not chrome_path:
+                    raise ValueError("GOOGLE_CHROME_BIN is not set")
+                options.binary_location = chrome_path
+
+            self.pool.put(uc.Chrome(options=options))
+
+    def get_browser(self):
+        return self.pool.get()
+
+    def release_browser(self, browser):
+        browser.get("about:blank")  # Reset state
+        self.pool.put(browser)
+    
+    def cleanup(self):
+        while not self.pool.empty():
+            try:
+                browser = self.pool.get_nowait()
+                browser.quit()
+            except Exception as e:
+                print(f"Error cleaning up browser: {e}")
+
+
+def information_scrapper(company: str, browser_pool: BrowserPool = None) -> dict:
     """
-    Scrapes and gathers detailed information about a company from multiple sources.
-
-    Collects:
-    - Company name and description from Wikipedia
-    - Country of origin (restricted to African countries)
-    - Competitors, funding, and company stats
-    - (Optional) Recent news articles
+    Scrapes company information from multiple sources in parallel.
 
     Args:
-        company (str): The name of the company to gather information about.
+        company: Name of the company to research
+        browser_pool: Optional browser pool for Selenium reuse
 
     Returns:
-        dict: A dictionary with keys:
-            - "company": str
-            - "company_info_fixed": dict
-            - "company_info": dict
-            - "description": str
-            - "country": str (African only)
-            - "competitors": dict
-            - "funding": dict
+        Dictionary containing all scraped company information
 
     Raises:
-        Exception: If the company is not identified as African or if critical steps fail.
+        Exception: If critical information (like country) cannot be found
     """
-    start = time.time()
-    information = {}
+    start_time = time.time()
+    information = {"company": company}
 
-    # Get Wikipedia-based info
-    company_name, company_info, desc = get_wiki_link(company)
+    local_pool = False
+    if browser_pool is None:
+        browser_pool = BrowserPool()
+        local_pool = True
 
-    # Determine African country of origin
-    country = find_country_of_origin(
-        company,
-        african_countries,
-        company_info if company_info else {},
-        african_demonyms
-    )
+    try:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            # Submit all tasks at once
+            futures = {
+                "wiki": executor.submit(get_wiki_link, company, browser_pool),
+                "stats": executor.submit(get_company_stats, company, browser_pool),
+                "country": executor.submit(
+                    find_country_of_origin,
+                    company,
+                    african_countries,
+                    {},
+                    african_demonyms,
+                    browser_pool
+                )
+            }
 
-    if not country:
-        raise Exception(
-            f"Could not find country of origin for '{company}' among African countries.")
+            # Process results as they complete
+            for key, future in futures.items():
+                try:
+                    result = future.result()
 
-    # Company stats (fallback to raw name if Wikipedia doesn't return one)
-    name_for_stats = company_name if company_name else company
-    competitors, funding, company_information_dict = get_company_stats(
-        name_for_stats)
+                    if key == "wiki":
+                        company_name, company_info, desc = result
+                        information.update({
+                            "company": company_name,
+                            "company_info": company_info,
+                            "description": desc
+                        })
+                    elif key == "stats":
+                        competitors, funding, company_info_dict = result
+                        information.update({
+                            "competitors": competitors or {},
+                            "funding": funding or {},
+                            "company_info_fixed": company_info_dict or {}
+                        })
+                    elif key == "country":
+                        if not result:
+                            raise ValueError("Country not found")
+                        information["country"] = result
 
-    # Compose response dictionary
-    information["company"] = name_for_stats
-    information["company_info_fixed"] = company_information_dict
-    information["company_info"] = company_info if company_info else {}
-    information["description"] = desc if desc else ''
-    information["country"] = country
-    information["competitors"] = competitors
-    information["funding"] = funding
-    # information["articles"] = fetch_google_news(name_for_stats, limit=10)
+                except Exception as e:
+                    error_msg = f"{key} scraping failed: {str(e)}"
+                    print(error_msg)
 
-    print(f"Time taken: {time.time() - start:.2f} seconds")
+                    if key == "country":
+                        raise Exception(error_msg)
 
-    return information
+        #information["processing_time_sec"] = round(time.time() - start_time, 2)
+        
+        if not information.get("country"):
+            raise ValueError("Could not determine country of origin")
+
+        return information
+
+    finally:
+        if local_pool:
+            browser_pool.cleanup()
