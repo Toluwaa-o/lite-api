@@ -87,7 +87,7 @@ def information_scrapper(company: str, browser_pool: BrowserPool = None) -> dict
             # Process results as they complete
             for key, future in futures.items():
                 try:
-                    result = future.result()
+                    result = future.result(timeout=30)
 
                     if key == "wiki":
                         company_name, company_info, desc = result
@@ -116,7 +116,7 @@ def information_scrapper(company: str, browser_pool: BrowserPool = None) -> dict
                         raise Exception(error_msg)
 
         #information["processing_time_sec"] = round(time.time() - start_time, 2)
-        
+        print(round(time.time() - start_time, 2))
         if not information.get("country"):
             raise ValueError("Could not determine country of origin")
 
