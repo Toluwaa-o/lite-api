@@ -145,19 +145,15 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
 
     try:
         base, query = url(company, 'country')
-        browser.get(base)
+        driver.get(base)
+        time.sleep(2)
 
-        wait = WebDriverWait(browser, 10)
-        search_input = wait.until(
-            EC.presence_of_element_located((By.NAME, "q")))
-
+        search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        # Wait for results to load
-        wait.until(EC.presence_of_element_located(
-            (By.CSS_SELECTOR, ".result")))
+        time.sleep(3)
 
         soup = BeautifulSoup(browser.page_source, 'html.parser')
 
@@ -284,19 +280,15 @@ def extract_investor_no(company_name: str, browser_pool) -> int:
     target_url = 'https://html.duckduckgo.com/html/'
 
     try:
-        browser.get(target_url)
+        driver.get(target_url)
+        time.sleep(2)  # Let the page load
 
-        wait = WebDriverWait(browser, 10)
-        search_input = wait.until(
-            EC.presence_of_element_located((By.NAME, "q")))
-
+        search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(search)
         search_input.send_keys(Keys.RETURN)
 
-        # Wait for results to load
-        wait.until(EC.presence_of_element_located(
-            (By.CSS_SELECTOR, ".result")))
+        time.sleep(3)  # Allow results to load
 
         soup = BeautifulSoup(browser.page_source, 'html.parser')
         elements = soup.find_all('div', class_='result')
@@ -363,18 +355,15 @@ def get_company_stats(company_name: str, browser_pool) -> tuple:
     try:
         target_url, query = url(company_name, 'stats')
 
-        browser.get(target_url)
-        wait = WebDriverWait(browser, 10)
-        search_input = wait.until(
-            EC.presence_of_element_located((By.NAME, "q")))
+        driver.get(target_url)
+        time.sleep(2)
 
+        search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        # Wait for results to load
-        wait.until(EC.presence_of_element_located(
-            (By.CSS_SELECTOR, ".result")))
+        time.sleep(3)
 
         soup = BeautifulSoup(browser.page_source, 'html.parser')
 
@@ -469,20 +458,16 @@ def get_wiki_link(company: str, browser_pool) -> tuple:
 
     try:
         base, query = url(company, 'wiki')
-        browser.get(base)
-        wait = WebDriverWait(browser, 10)
-        search_input = wait.until(
-            EC.presence_of_element_located((By.NAME, "q")))
+        driver.get(base)
+        time.sleep(2)
 
+        search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        # Wait for results to load
-        wait.until(EC.presence_of_element_located(
-            (By.CSS_SELECTOR, ".result")))
-
-        page = browser.page_source
+        time.sleep(1)  # Allow results to load
+        page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
 
         result = soup.find("div", class_="results")
