@@ -64,7 +64,6 @@ async def get_information(company: str):
 
             cache[company.strip()] = existing
 
-            print(existing)
             return JSONResponse(content=existing, status_code=200)
 
         print("Fetching fresh data for", company.strip())
