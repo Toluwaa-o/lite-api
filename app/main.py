@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from cachetools import TTLCache
 from fastapi.responses import JSONResponse
 from app.scrapper_functions.scrapper import information_scrapper
@@ -71,7 +71,7 @@ async def get_information(company: str):
         data = information_scrapper(company.strip())
 
         if "error" in data:
-            return JSONResponse(content=data, status_code=200)
+            raise HTTPException(status_code=400, detail=data["error"])
         
         company_dict = jsonable_encoder(data)
         now = datetime.now(timezone.utc).isoformat()
