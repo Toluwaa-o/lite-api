@@ -82,7 +82,6 @@ async def get_information(company: str):
         company_dict.pop("_id", None)
         
         cache[company] = company_dict
-        print('company_dict', company_dict)
         
         return JSONResponse(content=company_dict, status_code=200)
 
