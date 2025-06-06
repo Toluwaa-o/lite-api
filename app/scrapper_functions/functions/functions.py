@@ -371,20 +371,20 @@ def get_company_stats(company_name: str, driver) -> tuple:
         search_input.send_keys(Keys.RETURN)
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        print(f"searching for growjo link page: {soup}")
         search_results = soup.find("div", class_="results")
-        print(f"searching for growjo link results: {search_results}")
-        
+
         main_link = extract_link(search_results, "growjo.com")
-        print(f"growjo link: {main_link}")
         if not main_link:
             raise Exception("Growjo link not found in search results")
 
-        driver.get(main_link)
+        if company_name.strip().lower() == 'andela':
+            driver.get('https://growjo.com/company/Andela')
+        else:
+            driver.get(main_link)
+            
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "main")))
         grow_soup = BeautifulSoup(driver.page_source, "html.parser")
-        print(f"grow soup: {grow_soup}")
     except Exception as e:
         print(f"[Navigation Error] {e}")
         return {}, {}, {}
