@@ -55,8 +55,16 @@ async def get_information(company: str):
 
         if existing:
             print("Returning data from database for", company.strip())
-            cache[company.strip()] = existing
+
             del existing["_id"]
+
+            for key in ['created_at', 'updated_at']:
+                if key in existing and isinstance(existing[key], datetime):
+                    existing[key] = existing[key].isoformat()
+
+            cache[company.strip()] = existing
+
+            print(existing)
             return JSONResponse(content=existing, status_code=200)
 
         print("Fetching fresh data for", company.strip())
