@@ -110,9 +110,6 @@ ENV/
 # .idea
 .idea/
 
-# model (only for updating data)
-model
-
 # Scrape (for filling database with companies)
 scrape.py
 
