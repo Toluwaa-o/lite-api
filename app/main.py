@@ -65,7 +65,7 @@ async def get_information(company: str):
         if "error" not in data:
             company_dict = jsonable_encoder(data)
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc).isoformat()
             company_dict["created_at"] = now
             company_dict["updated_at"] = now
             cache[company.strip()] = company_dict
