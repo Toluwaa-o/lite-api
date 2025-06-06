@@ -70,8 +70,9 @@ async def get_information(company: str):
             company_dict["updated_at"] = now
             cache[company.strip()] = company_dict
             companies.insert_one(company_dict)
-
-        return JSONResponse(content=company_dict, status_code=200)
+            return JSONResponse(content=company_dict, status_code=200)
+        else:
+            return JSONResponse(content=data, status_code=200)
 
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
