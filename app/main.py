@@ -15,6 +15,7 @@ app = FastAPI()
 
 origins = [
     "https://stears-lite.vercel.app",
+    "http://localhost:3000/"
 ]
 
 app.add_middleware(
@@ -56,32 +57,32 @@ async def get_information(company: str):
         if existing:
             print("Returning data from database for", company.strip())
 
-            del existing["_id"]
+            existing.pop("_id", None)
 
             for key in ['created_at', 'updated_at']:
                 if key in existing and isinstance(existing[key], datetime):
                     existing[key] = existing[key].isoformat()
 
             cache[company.strip()] = existing
-
+            print('existing', existing)
             return JSONResponse(content=existing, status_code=200)
 
         print("Fetching fresh data for", company.strip())
         data = information_scrapper(company.strip())
 
-        if "error" not in data:
-            company_dict = jsonable_encoder(data)
-
-            now = datetime.now(timezone.utc).isoformat()
-            company_dict["created_at"] = now
-            company_dict["updated_at"] = now
-            cache[company.strip()] = company_dict
-
-            result = companies.insert_one(company_dict)
-
-            return JSONResponse(content=cache[company.strip()], status_code=200)
-        else:
+        if "error" in data:
             return JSONResponse(content=data, status_code=200)
+        
+        company_dict = jsonable_encoder(data)
+        now = datetime.now(timezone.utc).isoformat()
+        company_dict["created_at"] = now
+        company_dict["updated_at"] = now
+
+        companies.insert_one(company_dict)
+        cache[company] = company_dict
+        print('company_dict', company_dict)
+        
+        return JSONResponse(content=company_dict, status_code=200)
 
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
