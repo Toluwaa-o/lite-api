@@ -64,7 +64,7 @@ async def get_information(company: str):
                     existing[key] = existing[key].isoformat()
 
             cache[company.strip()] = existing
-            print('existing', existing)
+            
             return JSONResponse(content=existing, status_code=200)
 
         print("Fetching fresh data for", company.strip())
@@ -79,6 +79,8 @@ async def get_information(company: str):
         company_dict["updated_at"] = now
 
         companies.insert_one(company_dict)
+        company_dict.pop("_id", None)
+        
         cache[company] = company_dict
         print('company_dict', company_dict)
         
