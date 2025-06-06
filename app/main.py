@@ -76,8 +76,10 @@ async def get_information(company: str):
             company_dict["created_at"] = now
             company_dict["updated_at"] = now
             cache[company.strip()] = company_dict
-            companies.insert_one(company_dict)
-            return JSONResponse(content=company_dict, status_code=200)
+
+            result = companies.insert_one(company_dict)
+
+            return JSONResponse(content=cache[company.strip()], status_code=200)
         else:
             return JSONResponse(content=data, status_code=200)
 
