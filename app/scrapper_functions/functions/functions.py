@@ -4,22 +4,26 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from app.scrapper_functions.data.data import african_countries
 import requests
+import time
+import undetected_chromedriver as uc
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
 import feedparser
 from urllib.parse import urlparse, parse_qs, unquote
 from collections import Counter
+import os
 
 
-def url(company: str, search_type: str) -> str:
+def url(company: str, search_type: str) -> tuple[str, str]:
     """Generates a DuckDuckGo search URL based on the company name and search type.
 
     Args:
         company (str): The name of the company to search for.
-        search_type (str): The type of search to perform. 
-            Accepts "wiki" for Wikipedia, "stats" for Growjo stats, or any other value for general country of origin.
+        search_type (str): The type of search to perform.
+            Accepts "wiki" for Wikipedia, "stats" for Growjo stats, 'crunch' for crunchbase stats, or any other value for general country of origin.
 
     Returns:
         str: A full DuckDuckGo HTML search URL for the given company and search type.
@@ -27,20 +31,20 @@ def url(company: str, search_type: str) -> str:
     base_link = "https://html.duckduckgo.com/html/?q="
     if search_type == 'wiki':
         keyword = f"{company} company wikipedia"
-        return base_link, keyword
     elif search_type == 'stats':
         keyword = f"{company} growjo.com company"
-        return base_link, keyword
+    elif search_type == 'crunch':
+        keyword = f"{company} crunchbase.com company"
     else:
         keyword = f"{company} company founded in what country?"
-        return base_link, keyword
+    return base_link, keyword
 
 
 def clean_ddg_urls(url: str) -> str:
     """Extracts and returns the clean URL from a DuckDuckGo redirect link.
 
     DuckDuckGo search result URLs often contain a `uddg` parameter
-    which holds the actual destination URL. This function parses and 
+    which holds the actual destination URL. This function parses and
     decodes that value.
 
     Args:
@@ -62,13 +66,13 @@ def clean_ddg_urls(url: str) -> str:
 def extract_link(res, link_type: str) -> str:
     """Extracts a specific type of link from DuckDuckGo search results.
 
-    Searches for anchor tags in the result and attempts to extract the first 
-    link that contains the specified `link_type`. It cleans the link using 
+    Searches for anchor tags in the result and attempts to extract the first
+    link that contains the specified `link_type`. It cleans the link using
     `clean_ddg_urls` and further processes it to remove any redirection formatting.
 
     Args:
         res: A BeautifulSoup object representing the parsed HTML of a DuckDuckGo search result.
-        link_type (str): A string indicating the expected type of link to extract 
+        link_type (str): A string indicating the expected type of link to extract
             (e.g., "wikipedia", "growjo").
 
     Returns:
@@ -78,26 +82,24 @@ def extract_link(res, link_type: str) -> str:
         Exception: If no matching link containing the `link_type` is found.
     """
     links = res.find_all("a", class_="result__url")
-    # print(f"Unclean Links: {[l.get('href') for l in links]}")
-    # print(f"Clean Links: {[clean_ddg_urls(l.get('href')) for l in links]}")
-    href = clean_ddg_urls(links[0].get("href"))
-    if href and link_type in href:
-        href = href.split("/url?q=")[-1].split("&")[0]
-        return href
-    else:
-        href = clean_ddg_urls(links[1].get("href"))
-        if href and link_type in href:
-            href = href.split("/url?q=")[-1].split("&")[0]
-            return href
-        else:
-            raise Exception(f"Cannot find a {link_type} link for the company")
+    for link in links[:2]:
+        raw_href = link.get("href")
+        if not raw_href:
+            continue
+
+        cleaned_href = clean_ddg_urls(raw_href)
+
+        if cleaned_href and link_type in cleaned_href:
+            return cleaned_href.split("/url?q=")[-1].split("&")[0]
+
+    raise Exception(f"Cannot find a {link_type} link for the company.")
 
 
 def extract_most_mentioned_country(full_text: str, african_countries: list) -> str:
     """Identifies the most frequently mentioned African country in a given text.
 
-    Converts the input text to lowercase and searches for exact matches of each country 
-    name from the provided list. It counts occurrences using regex word boundaries to 
+    Converts the input text to lowercase and searches for exact matches of each country
+    name from the provided list. It counts occurrences using regex word boundaries to
     avoid partial matches.
 
     Args:
@@ -110,21 +112,23 @@ def extract_most_mentioned_country(full_text: str, african_countries: list) -> s
     full_text = full_text.lower()
     country_counts = Counter()
 
-    for country in african_countries:
-        pattern = rf"\b{re.escape(country.lower())}\b"
-        matches = re.findall(pattern, full_text)
+    patterns = {
+        country: re.compile(rf"\b{re.escape(country.lower())}\b")
+        for country in african_countries
+    }
+
+    for country, pattern in patterns.items():
+        matches = pattern.findall(full_text)
         if matches:
             country_counts[country] += len(matches)
 
     if country_counts:
-        # Return the country with the highest occurrence
-        most_common = country_counts.most_common(1)[0][0]
-        return most_common
+        return country_counts.most_common(1)[0][0]
 
     return ""
 
 
-def find_country_of_origin(company: str, african_countries: list, company_info: dict, african_demonyms: dict, browser_pool) -> str:
+def find_country_of_origin(company: str, african_countries: list, company_info: dict, african_demonyms: dict, driver) -> str:
     """
     Attempts to determine the African country of origin for a given company.
     Only returns a result if it is in the list of African countries.
@@ -141,21 +145,19 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
                     return country_name
             continue
 
-    browser = browser_pool.get_browser()
-
+    # 2. Perform DuckDuckGo search
     try:
         base, query = url(company, 'country')
         driver.get(base)
-        time.sleep(2)
 
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.NAME, "q")))
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)
-
-        soup = BeautifulSoup(browser.page_source, 'html.parser')
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
 
         elements = soup.find_all("div", class_="result")
         full_text = " ".join(set(el.text.strip() for el in elements)).lower()
@@ -164,13 +166,10 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
         if country in african_countries:
             return country
 
-        for demonym in african_demonyms.values():
-            if re.search(rf"\b{re.escape(demonym.lower())}\b", full_text):
-                reversed_map = {
-                    v.lower(): k for k, v in african_demonyms.items()}
-                matched_country = reversed_map.get(demonym.lower())
-                if matched_country in african_countries:
-                    return matched_country
+        reversed_map = {v.lower(): k for k, v in african_demonyms.items()}
+        for demonym in reversed_map:
+            if demonym in full_text:
+                return reversed_map[demonym]
 
         for country in african_countries:
             pattern = r"\b(?:in|from|based in|located in|headquartered in|a[n]?|an)?\s*" + re.escape(
@@ -180,12 +179,6 @@ def find_country_of_origin(company: str, african_countries: list, company_info: 
 
     except Exception as e:
         print(f"Error finding country of origin: {e}")
-        try:
-            browser_pool.release_browser(browser)
-        except:
-            pass
-    finally:
-        browser_pool.release_browser(browser)
 
     return ""
 
@@ -203,22 +196,26 @@ def extract_company_details(li_list: list) -> dict:
     Returns:
         dict: A dictionary mapping each relevant section (e.g., "annual revenue") to its extracted value.
     """
-    company_information_dict = {}
+    company_info = {}
     sections = [
         "annual revenue", "venture funding", "revenue per employee",
         "total funding", "current valuation", "employees", "employee count"
     ]
-    for section in sections:
-        for li in li_list:
-            if section in li:
-                pattern = r"\W\d+\W?\d?+\w?\W?"
-                match = re.search(pattern, li)
+    seen = set()
+    for li in li_list:
+        li_lower = li.lower()
+        for section in sections:
+            if section in li_lower and section not in seen:
+                match = re.search(
+                    r"[\$€£]?\s?\d{1,3}(?:[,\d{3}]*)(?:\.\d+)?\s?[kmbKMB]?", li)
                 if match:
-                    company_information_dict[section] = match.group().strip()
+                    company_info[section] = match.group().strip()
                 else:
-                    company_information_dict[section] = li
+                    company_info[section] = li.strip()
+                seen.add(section)
+                break
 
-    return company_information_dict
+    return company_info
 
 
 def extract_table_data(table) -> dict:
@@ -236,30 +233,33 @@ def extract_table_data(table) -> dict:
               value is a list of cleaned data entries from that column.
     """
     table_data = {}
+
     head = table.find("thead")
-    ths = head.find_all("th")
+    if head:
+        header_cells = head.find_all("th")
+    else:
+        first_row = table.find("tr")
+        header_cells = first_row.find_all("th") or first_row.find_all("td")
 
-    header = [th.text.strip() for th in ths]
+    headers = [cell.text.strip() for cell in header_cells]
+    for header in headers:
+        table_data[header] = []
 
-    for i in range(len(header)):
-        table_data[header[i]] = []
-
-    body = table.find("tbody")
-    rows = body.find_all("tr")
+    # Extract rows
+    body = table.find("tbody") or table
+    rows = body.find_all("tr") if head else body.find_all("tr")[1:]
 
     for row in rows:
-        tds = row.find_all("td")
-        data = [td.text.strip() for td in tds]
-
-        for i in range(len(header)):
-            pattern = r"#\d+"
-            clean_data = re.sub(pattern, "", data[i])
-            table_data[header[i]].append(clean_data)
+        cells = row.find_all("td")
+        for i in range(min(len(cells), len(headers))):
+            text = cells[i].text.strip()
+            cleaned = re.sub(r"#\d+", "", text).strip()
+            table_data[headers[i]].append(cleaned)
 
     return table_data
 
 
-def extract_investor_no(company_name: str, browser_pool) -> int:
+def extract_investor_no(company_name: str, driver) -> int:
     """Extracts the number of investors for a given company using a DuckDuckGo search.
 
     The function searches for a phrase like "total X investors" in the DuckDuckGo search
@@ -274,52 +274,61 @@ def extract_investor_no(company_name: str, browser_pool) -> int:
              Returns 0 if no relevant information is found.
     """
 
-    browser = browser_pool.get_browser()
-
     search = f"how many investors does {company_name} have?"
     target_url = 'https://html.duckduckgo.com/html/'
 
+    full_text = ""
+
     try:
         driver.get(target_url)
-        time.sleep(2)  # Let the page load
 
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.NAME, "q")))
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(search)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)  # Allow results to load
-
-        soup = BeautifulSoup(browser.page_source, 'html.parser')
+        page = driver.page_source
+        soup = BeautifulSoup(page, 'html.parser')
         elements = soup.find_all('div', class_='result')
 
-        full_text = " ".join(set([el.text.strip() for el in elements])).lower()
-        full_text = full_text.lower()
+        full_text = " ".join({el.text.strip().lower()
+                             for el in elements})
+
     except Exception as e:
-        print(e)
-    finally:
-        browser_pool.release_browser(browser)
+        print(f"[Search error] {e}")
+        return 0
 
-    pattern = r"has\s+(\d+)\s+investors|from\s+(\d+)\s+investors|total\s+of\s+(\d+)\s+investors|raised\s+.*?\s+from\s+(\d+)\s+investors|backed\s+by\s+(\d+)\s+investors|(\d+)\s+investors\s+participated|(\d+)\s+institutional\s+investors|(\d+)\s+investors"
+    # Pattern matching different possible investor-related phrases
+    pattern = re.compile(
+        r"has\s+(\d+)\s+investors|"
+        r"from\s+(\d+)\s+investors|"
+        r"total\s+of\s+(\d+)\s+investors|"
+        r"raised\s+.*?\s+from\s+(\d+)\s+investors|"
+        r"backed\s+by\s+(\d+)\s+investors|"
+        r"(\d+)\s+investors\s+participated|"
+        r"(\d+)\s+institutional\s+investors|"
+        r"(\d+)\s+investors",
+        re.IGNORECASE
+    )
 
-    # print(f"All funding page text: {full_text}")
     try:
-        matches = re.findall(pattern, full_text)
+        matches = pattern.findall(full_text)
 
-        # Flatten the matches: each match is a tuple; extract non-empty group
-        numbers = [int(num) for match in matches for num in match if num]
+        numbers = [int(num)
+                   for match in matches for num in match if num.isdigit()]
 
         if numbers:
-            number_counts = Counter(numbers)
-            # print("Investor number counts:", number_counts)
-            return number_counts.most_common(1)[0][0]
+            return Counter(numbers).most_common(1)[0][0]
+
     except Exception as e:
-        print(e)
+        print(f"[Regex error] {e}")
 
     return 0
 
 
-def get_company_stats(company_name: str, browser_pool) -> tuple:
+def get_company_stats(company_name: str, driver) -> tuple:
     """Fetches company statistics such as competitors, funding information, and basic company details.
 
     This function performs a DuckDuckGo search for the company"s Growjo page and scrapes it to extract:
@@ -349,91 +358,175 @@ def get_company_stats(company_name: str, browser_pool) -> tuple:
     Raises:
         Exception: If the Growjo link or required data elements cannot be found.
     """
-
-    browser = browser_pool.get_browser()
-
     try:
         target_url, query = url(company_name, 'stats')
 
         driver.get(target_url)
-        time.sleep(2)
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.NAME, "q")))
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(3)
-
-        soup = BeautifulSoup(browser.page_source, 'html.parser')
-
-        # print(soup)
-
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
         search_results = soup.find("div", class_="results")
-        # print(f"Search Results {search_results}")
 
         main_link = extract_link(search_results, "growjo.com")
-        # print(f"main URL {main_link}")
+        if not main_link:
+            raise Exception("Growjo link not found in search results")
 
-        browser.get(main_link)
-        try:
-            WebDriverWait(browser, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
-        except Exception as e:
-            print("Timeout waiting for page to load:", e)
-
-        result = browser.page_source
-
-        grow_soup = BeautifulSoup(result, "html.parser")
-        # print(grow_soup)
+        driver.get(main_link)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "main")))
+        grow_soup = BeautifulSoup(driver.page_source, "html.parser")
     except Exception as e:
-        print(e)
-    finally:
-        browser_pool.release_browser(browser)
+        print(f"[Navigation Error] {e}")
+        return {}, {}, {}
 
-    competitors = {}
-    funding = {}
+    # --- Initialize Outputs ---
+    competitors, funding, company_info = {}, {}, {}
     industry = ""
 
+    # --- Industry ---
     try:
-        horizontal_info = grow_soup.find("div", id="revenue-financials")
-        horizontal_info_a = horizontal_info.find_all("a")
-        for a in horizontal_info_a:
-            href = a.get("href")
-            if "/industry/" in href:
-                industry = a.text.strip()
-    except:
-        print("Could not find industry")
+        info_div = grow_soup.find("div", id="revenue-financials")
+        print(f"info_div: {info_div}")
+        
+        if info_div:
+            for a in info_div.find_all("a"):
+                if "/industry/" in a.get("href", ""):
+                    industry = a.text.strip()
+                    break
+    except Exception as e:
+        print(f"[Industry Parsing Error] {e}")
+
+    tables = grow_soup.find_all("table", class_="cstm-table")
+
+    # --- Competitors ---
+    try:
+        for table in tables:
+            header_cells = table.find("thead").find_all("th")
+            headers = [th.text.strip().lower() for th in header_cells]
+
+            if "competitor name" in headers:
+                competitors = extract_table_data(table)
+                break
+    except Exception as e:
+        print(f"[Competitors Table Error] {e}")
+
+    # --- Funding ---
+    try:
+        for table in tables:
+            header_cells = table.find("thead").find_all("th")
+            headers = [th.text.strip().lower() for th in header_cells]
+
+            if "lead investors" in headers:
+                funding = extract_table_data(table)
+                break
+    except Exception as e:
+        print(f"[Funding Table Error] {e}")
+
+    # --- Company Details ---
+    try:
+        info_div = grow_soup.find("div", class_="col-md-5")
+        lis = [li.text.strip() for li in info_div.find_all("li")]
+    except Exception as e:
+        print(f"[Company Info Extraction Error] {e}")
+        lis = []
+
+    company_info = extract_company_details(lis)
 
     try:
-        competitors_table = grow_soup.find_all("table", class_="cstm-table")[1]
-        competitors = extract_table_data(competitors_table)
-    except:
-        print("no competitors table")
+        company_info["investors"] = extract_investor_no(company_name, driver)
+    except Exception as e:
+        print(f"[Investor Extraction Error] {e}")
+        company_info["investors"] = 0
 
-    try:
-        funding_table = grow_soup.find_all("table", class_="cstm-table")[3]
-        funding = extract_table_data(funding_table)
-    except:
-        print("no funding table")
+    company_info["industry"] = industry
 
-    try:
-        div = grow_soup.find("div", class_="col-md-5")
-        lis = div.find_all("li")
-        lis_list = [li.text.strip() for li in lis]
-    except:
-        print("Something went wrong while getting company information list")
-        lis_list = []
-
-    company_information_dict = extract_company_details(lis_list)
-    company_information_dict["investors"] = extract_investor_no(company_name, browser_pool)
-    company_information_dict["industry"] = industry
-
-    return competitors, funding, company_information_dict
+    return competitors, funding, company_info
 
 
-def get_wiki_link(company: str, browser_pool) -> tuple:
+# def get_crunchbase_info(company: str, african_countries: list, driver) -> tuple:
+#     """
+#     Fetches Crunchbase link and scrapes key company information.
+
+#     This function performs a DuckDuckGo search for the company's Crunchbase profile,
+#     navigates to the organization's page, and extracts the following:
+#     - Number of employees
+#     - Address/location of the company
+#     - Country (inferred from address)
+
+#     The function ensures the company is based in Africa by validating the country field.
+
+#     Args:
+#         company (str): The name of the company to retrieve information for.
+#         african_countries (list): A list of all African country names.
+#         driver (WebDriver): A Selenium WebDriver instance for browsing.
+
+#     Returns:
+#         tuple: A tuple containing:
+#             - str or None: The company's address.
+#             - str or None: The inferred country from the address.
+#             - str or None: The employee count description (e.g., "4113 Employees").
+
+#     Raises:
+#         Exception: If Crunchbase page is not found, or the company is not African-based.
+#     """
+#     address = country = employees = None  # Default return values
+
+#     try:
+#         target_url, query = url(company, 'crunch')
+
+#         driver.get(target_url)
+#         WebDriverWait(driver, 5).until(
+#             EC.presence_of_element_located((By.NAME, "q")))
+
+#         search_input = driver.find_element(By.NAME, "q")
+#         search_input.clear()
+#         search_input.send_keys(query)
+#         search_input.send_keys(Keys.RETURN)
+
+#         soup = BeautifulSoup(driver.page_source, 'html.parser')
+#         search_results = soup.find("div", class_="results")
+
+#         main_link = extract_link(search_results, "crunchbase.com/organization")
+#         if not main_link:
+#             raise Exception("Crunchbase link not found in search results")
+
+#         driver.get(main_link)
+#         WebDriverWait(driver, 10).until(
+#             EC.presence_of_element_located((By.TAG_NAME, "body")))
+
+#         print("page source", driver.page_source)
+#         crunch_soup = BeautifulSoup(driver.page_source, "html.parser")
+#         print(crunch_soup)
+#         # Get employee info
+#         emp_el = crunch_soup.find(
+#             "label-with-icon", {"iconkey": "icon_people_three"})
+#         if emp_el:
+#             employees = emp_el.get_text(strip=True)
+
+#         # Get location info
+#         addr_el = crunch_soup.find(
+#             "label-with-icon", {"iconkey": "icon_location"})
+#         if addr_el:
+#             address = addr_el.get_text(strip=True)
+#             matches = find_countries(address)
+#             country = matches[0].name if matches else None
+
+#             if country and country.lower() not in african_countries:
+#                 raise Exception("Company is not an African company")
+
+#     except Exception as e:
+#         print("Error:", e)
+
+#     return address, country, employees
+
+
+def get_wiki_link(company: str, driver) -> tuple:
     """Fetches the Wikipedia link and relevant company information.
 
     This function performs a DuckDuckGo search for the company"s Wikipedia page and scrapes the following:
@@ -454,22 +547,19 @@ def get_wiki_link(company: str, browser_pool) -> tuple:
         Exception: If the company is not found or if there are issues with scraping Wikipedia.
     """
 
-    browser = browser_pool.get_browser()
-
     try:
         base, query = url(company, 'wiki')
         driver.get(base)
-        time.sleep(2)
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.NAME, "q")))
 
         search_input = driver.find_element(By.NAME, "q")
         search_input.clear()
         search_input.send_keys(query)
         search_input.send_keys(Keys.RETURN)
 
-        time.sleep(1)  # Allow results to load
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
-
         result = soup.find("div", class_="results")
 
         # Extract the Wikipedia URL and fetch the page content
@@ -491,11 +581,14 @@ def get_wiki_link(company: str, browser_pool) -> tuple:
         if infobox:
             rows = infobox.find_all("tr")
             for row in rows:
-                label = row.find("th")
-                data = row.find("td")
-                if label and data:
-                    info_label.append(label.text.strip())
-                    info_data.append(data.text.strip())
+                try:
+                    label = row.find("th")
+                    data = row.find("td")
+                    if label and data:
+                        info_label.append(label.text.strip())
+                        info_data.append(data.text.strip())
+                except:
+                    continue
 
         # Extract a brief company description
         large_text = soup.find("div", class_="mw-body-content")
@@ -512,7 +605,8 @@ def get_wiki_link(company: str, browser_pool) -> tuple:
         company_keywords = ["company", "startup", "corporation", "firm",
                             "organization", "business", "enterprise", "subsidiary"]
 
-        if not any(keyword in large_text.text.strip().lower() for keyword in company_keywords):
+        text = large_text.get_text(" ", strip=True).casefold()
+        if not any(keyword in text for keyword in company_keywords):
             raise Exception("Name entered is most likely not a company.")
 
         # Process the extracted financial and business data
@@ -520,9 +614,7 @@ def get_wiki_link(company: str, browser_pool) -> tuple:
         units = ["hundred", "thousand", "million", "billion", "trillion"]
 
         for i in range(len(info_label)):
-            money_field = False
-            is_present = [st in info_data[i] for st in units]
-            money_field = any(is_present)
+            money_field = any(unit in info_data[i].lower() for unit in units)
 
             # Extract and clean money-related fields
             if money_field:
@@ -537,110 +629,12 @@ def get_wiki_link(company: str, browser_pool) -> tuple:
                 company_info[info_label[i].lower()] = re.sub(r"\[\d*\]", "", info_data[i].replace(
                     "\n", ", ").replace(",,", ","))
 
+        website_row = infobox.find("a", href=True)
+        if website_row and "http" in website_row["href"]:
+            company_info["website"] = website_row["href"]
+
         return company_name, company_info, new_dsc
     except Exception as e:
         print(f"Something went wrong while scrapping from wikipedia: {e}")
         raise Exception(
             f"Something went wrong while scrapping from wikipedia: {e}")
-    finally:
-        browser_pool.release_browser(browser)
-
-
-def get_sentiment_category(text: str) -> tuple:
-    """Analyzes the sentiment of a given text and categorizes it as positive, negative, or neutral.
-
-    This function uses the VADER SentimentIntensityAnalyzer to compute the sentiment score of the input text.
-    It returns the compound sentiment score as well as the sentiment category.
-
-    Args:
-        text (str): The input text to analyze for sentiment.
-
-    Returns:
-        tuple: A tuple containing:
-            - float: The compound sentiment score, ranging from -1 (most negative) to 1 (most positive).
-            - str: The sentiment category, which can be one of "positive", "negative", or "neutral".
-    """
-    analyzer = SentimentIntensityAnalyzer()
-    score = analyzer.polarity_scores(text)
-
-    if score["compound"] > 0.05:
-        sent = "positive"
-    elif score["compound"] < -0.05:
-        sent = "negative"
-    else:
-        sent = "neutral"
-
-    return score["compound"], sent
-
-
-def remove_emojis(text: str) -> str:
-    """Removes all emojis from the given text.
-
-    This function uses a regular expression to identify and remove all Unicode characters
-    that match the emoji patterns, including emoticons, transport symbols, flags, and other
-    pictographs.
-
-    Args:
-        text (str): The input string from which emojis will be removed.
-
-    Returns:
-        str: The input string with all emojis removed.
-    """
-    emoji_pattern = re.compile(
-        "["
-        u"\U0001F600-\U0001F64F"  # emoticons
-        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-        u"\U0001F680-\U0001F6FF"  # transport & map
-        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-        u"\U00002700-\U000027BF"  # dingbats
-        u"\U000024C2-\U0001F251"  # enclosed characters
-        "]+", flags=re.UNICODE)
-    return emoji_pattern.sub(r"", text)
-
-
-def fetch_google_news(company_name: str, limit: int = 10) -> list:
-    """Fetches the latest news articles about a company from Google News.
-
-    This function fetches the latest news related to the given company from Google News,
-    processes each article"s title to analyze sentiment, and returns a list of articles
-    with relevant details.
-
-    Args:
-        company_name (str): The name of the company for which to fetch news articles.
-        limit (int, optional): The maximum number of articles to return. Defaults to 10.
-
-    Returns:
-        list: A list of dictionaries containing details of the fetched articles. Each dictionary
-              includes the article ID, title, publication date, link, source, source link, and
-              sentiment score.
-    """
-    query = company_name.replace(" ", "+")
-    articles = []
-
-    try:
-        rss_url = f"https://news.google.com/rss/search?q={query}"
-        feed = feedparser.parse(rss_url)
-        sorted_feed = sorted(
-            feed.entries, key=lambda x: x.published_parsed, reverse=True)
-
-        for entry in sorted_feed[:limit]:
-            score, _ = get_sentiment_category(entry.title.split(" - ")[0])
-            dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %Z")
-            iso_format = dt.isoformat() + "Z"
-            details = {
-                "id": entry.id,
-                "title": remove_emojis(entry.title.split(" - ")[0]),
-                "published": iso_format,
-                "link": entry.link,
-                "source": entry.source.title,
-                "source_link": entry.source.href,
-                "sentiment_score": score
-            }
-            articles.append(details)
-
-    except Exception as e:
-        print(f"Something went wrong while scrapping from google feed: {e}")
-        raise Exception(
-            f"Something went wrong while scrapping from google feed: {e}")
-
-    return articles

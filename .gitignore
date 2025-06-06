@@ -112,3 +112,9 @@ ENV/
 
 # model (only for updating data)
 model
+
+# Scrape (for filling database with companies)
+scrape.py
+
+# Data
+companyData.py
