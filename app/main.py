@@ -1,15 +1,16 @@
+import os
+import uvicorn
+from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime, timezone
+from fastapi.encoders import jsonable_encoder
+from pymongo import MongoClient
 from fastapi import FastAPI, HTTPException
 from cachetools import TTLCache
 from fastapi.responses import JSONResponse
 from app.scrapper_functions.scrapper import information_scrapper
-from pymongo import MongoClient
-from app.scrapper_functions.model.company import Company
-from fastapi.encoders import jsonable_encoder
-from datetime import datetime, timezone
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-import uvicorn
-import os
+# from app.scrapper_functions.functions.functions import get_macro_data, get_africamonitor_macro_data
+# from app.scrapper_functions.data.data import country_codes, macro_indicator_dict
 
 app = FastAPI()
 
@@ -30,7 +31,8 @@ load_dotenv()
 
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client[os.getenv("MONGO_DB")]
-companies = db[os.getenv("MONGO_COLLECTION")]
+companies = db[os.getenv("MONGO_COLLECTION_ONE")]
+countries = db[os.getenv("MONGO_COLLECTION_TWO")]
 
 cache = TTLCache(maxsize=100, ttl=3600*5)
 
@@ -64,7 +66,7 @@ async def get_information(company: str):
                     existing[key] = existing[key].isoformat()
 
             cache[company.strip()] = existing
-            
+
             return JSONResponse(content=existing, status_code=200)
 
         print("Fetching fresh data for", company.strip())
@@ -72,7 +74,7 @@ async def get_information(company: str):
 
         if "error" in data:
             raise HTTPException(status_code=400, detail=data["error"])
-        
+
         company_dict = jsonable_encoder(data)
         now = datetime.now(timezone.utc).isoformat()
         company_dict["created_at"] = now
@@ -80,9 +82,9 @@ async def get_information(company: str):
 
         companies.insert_one(company_dict)
         company_dict.pop("_id", None)
-        
+
         cache[company] = company_dict
-        
+
         return JSONResponse(content=company_dict, status_code=200)
 
     except Exception as e:

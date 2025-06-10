@@ -1,19 +1,18 @@
 from country_named_entity_recognition import find_countries
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from app.scrapper_functions.data.data import african_countries
 import requests
-import time
-import undetected_chromedriver as uc
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
-import feedparser
 from urllib.parse import urlparse, parse_qs, unquote
 from collections import Counter
+from pymongo import MongoClient
+from dotenv import load_dotenv
+import polars as pl
+import africamonitor as am
 import os
 
 
@@ -393,7 +392,7 @@ def get_company_stats(company_name: str, driver) -> tuple:
     try:
         info_div = grow_soup.find("div", id="revenue-financials")
         print(f"info_div: {info_div}")
-        
+
         if info_div:
             for a in info_div.find_all("a"):
                 if "/industry/" in a.get("href", ""):
@@ -638,3 +637,111 @@ def get_wiki_link(company: str, driver) -> tuple:
         print(f"Something went wrong while scrapping from wikipedia: {e}")
         raise Exception(
             f"Something went wrong while scrapping from wikipedia: {e}")
+
+
+def get_macro_data(country_codes: dict, macro_indicator_dict: dict) -> dict:
+    """
+    Fetches macroeconomic data from the World Bank API for a list of African countries,
+    based on specified macroeconomic indicators.
+
+    Args:
+        country_codes (dict): Mapping of country names to their ISO 3166-1 alpha-3 codes.
+        macro_indicator_dict (dict): Nested dictionary mapping categories to World Bank indicator codes
+                                     and their corresponding readable names.
+                                     Example: { "GDP": {"NY.GDP.MKTP.CD": "GDP (current US$)"} }
+
+    Returns:
+        list[dict]: A list of dictionaries, one per country, with the structure:
+            {
+                "name": name of country,
+                "data": {
+                    <indicator_name>: <value>,
+                    ...
+                },
+                "updated_at": last updated date
+            }
+    """
+
+    macro_data_dict = []
+
+    for country in country_codes.keys():
+        country_code = country_codes[country]
+        countryMacroData = {"name": country, "data": {}}
+
+        for cat in macro_indicator_dict.keys():
+            for code in macro_indicator_dict[cat].keys():
+                indicator = code
+                url = f'https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator}?format=json'
+
+                response = requests.get(url)
+                data = response.json()
+
+                if "lastupdated" in data[0].keys():
+                    last_updated_dt = datetime.strptime(
+                        data[0]["lastupdated"], "%Y-%m-%d")
+                    countryMacroData['updated_at'] = last_updated_dt
+
+                countryMacroData['data'][macro_indicator_dict[cat]
+                                         [code]] = data[1][0]['value']
+
+        macro_data_dict.append(countryMacroData)
+
+    return macro_data_dict
+
+
+def get_africamonitor_macro_data(country_codes: dict) -> list:
+    """
+    Fetches macroeconomic indicators from African Monitor (Kiel Institute).
+
+    Args:
+        country_codes (dict): Mapping of country names to ISO3 codes.
+
+    Returns:
+        list[dict]: A list of dictionaries with country name and macro data.
+    """
+
+    indicator_map = {
+        'NGDP_RPCH': 'Real GDP growth (%)',
+        'PCPIPCH': 'Inflation rate (%)',
+        'GGXCNL_NGDP': 'Fiscal balance (% of GDP)',
+        'GGXWDG_NGDP': 'Public debt (% of GDP)',
+        'BCA_NGDPD': 'Current account (% of GDP)',
+        'TX_RPCH': 'Export growth (%)',
+        'TM_RPCH': 'Import growth (%)',
+        'NGDPD': 'Nominal GDP (USD)',
+        'NGDPDPC': 'GDP per capita (USD)',
+    }
+
+    load_dotenv()
+    client = MongoClient(os.getenv("MONGO_URI"))
+    db = client[os.getenv("MONGO_DB")]
+    countries = db[os.getenv("MONGO_COLLECTION_TWO")]
+    iso_codes = list(country_codes.values())
+    codes_country = {v: k for k, v in country_codes.items()}
+
+    # Fetch data
+    df = am.data(ctry=iso_codes, series=list(indicator_map.keys()), tfrom=2024)
+
+    # Prepare results
+    results = []
+
+    for code in iso_codes:
+        val = {"country": codes_country[code]}
+        country_data = df.filter(pl.col("ISO3") == code).filter(
+            pl.col("Date").dt.year() == 2024)
+
+        for k, readable in indicator_map.items():
+            try:
+                val[readable] = country_data[0,
+                                             k] if country_data.shape[0] > 0 else None
+            except:
+                val[readable] = None
+            countries.update_one(
+                {"name": codes_country[code]},
+                {"$set": {f"data.{readable}": val[readable]}}
+            )
+
+        results.append(val)
+
+    print("Done")
+    return results
