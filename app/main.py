@@ -8,7 +8,9 @@ from pymongo import MongoClient
 from fastapi import FastAPI, HTTPException
 from cachetools import TTLCache
 from fastapi.responses import JSONResponse
-from app.scrapper_functions.scrapper import information_scrapper
+from app.scrapper_functions.scrapper import create_driver
+from app.scrapper_functions.data.data import african_countries, african_demonyms
+from app.scrapper_functions.functions.functions import get_wiki_link, find_country_of_origin, get_company_stats
 # from app.scrapper_functions.functions.functions import get_macro_data, get_africamonitor_macro_data
 # from app.scrapper_functions.data.data import country_codes, macro_indicator_dict
 
@@ -70,10 +72,54 @@ async def get_information(company: str):
             return JSONResponse(content=existing, status_code=200)
 
         print("Fetching fresh data for", company.strip())
-        data = information_scrapper(company.strip())
+        driver = create_driver()
+        data = {}
 
-        if "error" in data:
-            raise HTTPException(status_code=400, detail=data["error"])
+        try:
+            try:
+                company_name, company_info, desc = get_wiki_link(
+                    company.strip(), driver)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail={
+                                    "Wiki Error": str(e)})
+
+            try:
+                country = find_country_of_origin(
+                    company.strip(),
+                    african_countries,
+                    company_info if company_info else {},
+                    african_demonyms,
+                    driver
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail={
+                                    "Country Detection Error": str(e)})
+
+            if not country:
+                raise HTTPException(status_code=404, detail={
+                                    "Country Match Error": f"Could not find country of origin for '{company.strip()}' among African countries."})
+
+            try:
+                name_for_stats = company_name if company_name else company.strip()
+                competitors, funding, company_information_dict = get_company_stats(
+                    name_for_stats, driver)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail={"Error": str(e)})
+
+            data = {
+                "company": name_for_stats,
+                "company_info_fixed": company_information_dict,
+                "company_info": company_info if company_info else {},
+                "description": desc if desc else "",
+                "country": country,
+                "competitors": competitors,
+                "funding": funding,
+            }
+
+        except Exception as e:
+            raise HTTPException(status_code=400, detail={"error": str(e)})
+        finally:
+            driver.quit()
 
         company_dict = jsonable_encoder(data)
         now = datetime.now(timezone.utc).isoformat()
