@@ -80,8 +80,9 @@ async def get_information(company: str):
                 company_name, company_info, desc = get_wiki_link(
                     company.strip(), driver)
             except Exception as e:
-                raise HTTPException(status_code=500, detail={
-                                    "Wiki Error": str(e)})
+                print(str(e))
+                # raise HTTPException(status_code=500, detail={
+                #                     "Wiki Error": str(e)})
 
             try:
                 country = find_country_of_origin(
