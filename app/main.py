@@ -81,6 +81,7 @@ async def get_information(company: str):
                     company.strip(), driver)
             except Exception as e:
                 print(str(e))
+                company_name, company_info, desc = None, None, None
                 # raise HTTPException(status_code=500, detail={
                 #                     "Wiki Error": str(e)})
 
