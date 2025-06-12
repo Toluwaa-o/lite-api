@@ -85,7 +85,7 @@ async def get_information(company: str):
 
             try:
                 country = find_country_of_origin(
-                    company.strip(),
+                    company_name if company_name else company.strip(),
                     african_countries,
                     company_info if company_info else {},
                     african_demonyms,
